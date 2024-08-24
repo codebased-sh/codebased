@@ -9,34 +9,18 @@ repository = "https://github.com/codebased-sh/codebased"
 [tool.poetry.dependencies]
 python = "^3.8"
 tree-sitter = "^0.21"
-openai = { version = "^0.27", optional = true, extras = ["openai"] }
-tree-sitter-c = { version = "^0.21", optional = true, extras = ["c"] }
-tree-sitter-c-sharp = { version = "^0.21", optional = true, extras = ["c-sharp"] }
-tree-sitter-cpp = { version = "^0.21", optional = true, extras = ["cpp"] }
-tree-sitter-go = { version = "^0.21", optional = true, extras = ["go"] }
-tree-sitter-java = { version = "^0.21", optional = true, extras = ["java"] }
-tree-sitter-javascript = { version = "^0.21", optional = true, extras = ["javascript"] }
-tree-sitter-php = { version = "^0.22", optional = true, extras = ["php"] }
-tree-sitter-python = { version = "^0.21", optional = true, extras = ["python"] }
-tree-sitter-ruby = { version = "^0.21", optional = true, extras = ["ruby"] }
-tree-sitter-rust = { version = "^0.21", optional = true, extras = ["rust"] }
-tree-sitter-typescript = { version = "^0.21", optional = true, extras = ["typescript"] }
-
-[tool.poetry.extras]
-openai = ["openai"]
-c = ["tree-sitter-c"]
-c-sharp = ["tree-sitter-c-sharp"]
-cpp = ["tree-sitter-cpp"]
-css = ["tree-sitter-css"]
-go = ["tree-sitter-go"]
-java = ["tree-sitter-java"]
-javascript = ["tree-sitter-javascript"]
-php = ["tree-sitter-php"]
-python = ["tree-sitter-python"]
-ruby = ["tree-sitter-ruby"]
-rust = ["tree-sitter-rust"]
-typescript = ["tree-sitter-typescript"]
-all = ["openai", "tree-sitter-c", "tree-sitter-c-sharp", "tree-sitter-cpp", "tree-sitter-css", "tree-sitter-go", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-php", "tree-sitter-python", "tree-sitter-ruby", "tree-sitter-rust", "tree-sitter-typescript"]
+openai = "^0.27"
+tree-sitter-c = "^0.21"
+tree-sitter-c-sharp = "^0.21"
+tree-sitter-cpp = "^0.21"
+tree-sitter-go = "^0.21"
+tree-sitter-java = "^0.21"
+tree-sitter-javascript = "^0.21"
+tree-sitter-php = "^0.22"
+tree-sitter-python = "^0.21"
+tree-sitter-ruby = "^0.21"
+tree-sitter-rust = "^0.21"
+tree-sitter-typescript = "^0.21"
 
 [tool.poetry.scripts]
 codebased = "codebased.--main--:main"
