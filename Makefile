@@ -9,7 +9,7 @@ lfg:
 	git add -A
 	git commit -m "Ship it"
 	git push origin master
-	echo "Great job, Max! Here's $(RANDOM) good boy points."
+	echo "Great job, Max! Here's $$(od -An -N2 -i /dev/urandom | tr -d ' ') good boy points."
 
 package-build:
 	poetry build
