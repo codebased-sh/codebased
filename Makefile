@@ -9,4 +9,4 @@ lfg:
 	git add -A
 	git commit -m "Ship it"
 	git push origin master
-	echo "Great job, Max! Here's $RANDOM good boy points."
+	echo "Great job, Max! Here's $(RANDOM) good boy points."
