@@ -9,6 +9,8 @@ repository = "https://github.com/codebased-sh/codebased"
 [tool.poetry.dependencies]
 python = "^3.8"
 
+[tool.poetry.scripts]
+codebased = "codebased.__main__:main"
 
 [build-system]
 requires = ["poetry-core"]
