@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Whatever it takes to make software development fast and painless."
 authors = ["Max Conradt <mhconradt@protonmail.com>"]
 readme = "README.md"
+repository = "https://github.com/codebased-sh/codebased"
 
 [tool.poetry.dependencies]
 python = "^3.8"
