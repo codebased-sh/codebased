@@ -10,3 +10,9 @@ lfg:
 	git commit -m "Ship it"
 	git push origin master
 	echo "Great job, Max! Here's $(RANDOM) good boy points."
+
+package-build:
+	poetry build
+
+package-publish: package-build
+	poetry publish
