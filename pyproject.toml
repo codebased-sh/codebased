@@ -21,6 +21,7 @@ tree-sitter-python = "^0.21"
 tree-sitter-ruby = "^0.21"
 tree-sitter-rust = "^0.21"
 tree-sitter-typescript = "^0.21"
+faiss-cpu = "^1.8.0.post1"
 
 [tool.poetry.scripts]
 codebased = "codebased.--main--:main"
