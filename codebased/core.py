@@ -6,7 +6,6 @@ import logging
 import os
 import sqlite3
 import textwrap
-from functools import lru_cache
 from pathlib import Path
 
 import tiktoken
@@ -130,7 +129,7 @@ class Settings:
         return cls.from_application_directory(Path.home() / ".codebased")
 
     def verify(self):
-        if not self.application_directory.exists():
+        if not all([self.application_directory.exists(), self.config_file.exists(), self.secrets_file.exists()]):
             raise NoApplicationDirectoryException(self.application_directory)
 
     def create_defaults(self):
