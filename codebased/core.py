@@ -49,7 +49,7 @@ class Config:
     """
     These are defaults etc. that are used across various commands.
     """
-    embeddings: EmbeddingsConfig
+    embeddings: EmbeddingsConfig = EmbeddingsConfig()
 
     @classmethod
     def load_file(cls, path: Path):
@@ -60,6 +60,32 @@ class Config:
             except KeyError:
                 embeddings_config = EmbeddingsConfig()
             return cls(**config, embeddings=embeddings_config)  # type: ignore
+
+    @classmethod
+    def from_prompt(cls):
+        embedding_model = cls.prompt_default_model()
+        dimensions = cls.prompt_default_dimensions()
+        return cls(
+            embeddings=EmbeddingsConfig(
+                model=embedding_model,
+                dimensions=dimensions
+            )
+        )
+
+    @classmethod
+    def prompt_default_model(cls) -> str:
+        embedding_model = input("What model do you want to use for embeddings? [text-embedding-ada-002]: ")
+        return embedding_model if embedding_model else 'text-embedding-ada-002'
+
+    @classmethod
+    def prompt_default_dimensions(cls) -> int:
+        text = input("What dimensions do you want to use for embeddings? [1536]: ")
+        dimensions = int(text) if text else 1536
+        return dimensions
+
+    def save(self, path: Path):
+        with open(path, 'w') as f:
+            toml.dump(dataclasses.asdict(self), f)
 
 
 @dataclasses.dataclass

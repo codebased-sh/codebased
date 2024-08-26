@@ -74,7 +74,6 @@ class Main:
                     self.context.db.execute("commit;")
                     yield from tmp
                 except AlreadyExistsException as e:
-                    # This super duper should just throw the duplicate identifier. What the heck.
                     persistent_file_revision = PersistentFileRevision(
                         id=e.identifier,
                         repository_id=repo.id,
