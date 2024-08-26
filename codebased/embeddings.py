@@ -6,4 +6,4 @@ from codebased.models import Embedding, Object
 
 
 def create_openai_embeddings_sync_batched(client: OpenAI, objects: T.List[Object]) -> T.Iterable[Embedding]:
-    pass
+    text = [format_chunk]

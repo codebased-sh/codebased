@@ -13,6 +13,7 @@ import tree_sitter_ruby
 import tree_sitter_rust
 import tree_sitter_typescript
 
+from codebased.filesystem import get_file_bytes, get_file_lines
 from codebased.models import PersistentFileRevision, Object, Coordinates
 
 
@@ -97,9 +98,9 @@ def parse_objects(file_revision: PersistentFileRevision) -> list[Object]:
         if file_type in language.file_types:
             impl = language
             break
-    with open(file, 'rb') as f:
-        text = f.read()
+    text = get_file_bytes(file)
     try:
+        # This is wasteful.
         text.decode('utf-8')
     except UnicodeDecodeError:
         return []
@@ -483,3 +484,27 @@ LANGUAGES = [
     TYPESCRIPT_IMPL,
     TSX_IMPL
 ]
+
+
+def render_object(
+        obj: Object,
+        file_revision: PersistentFileRevision,
+        *,
+        context: bool = True,
+        file: bool = True
+) -> str:
+    out_lines = []
+    if file:
+        out_lines.append(str(file_revision.path))
+        out_lines.append('')
+    in_lines = get_file_lines(file_revision.path)
+    if context:
+        for line in obj.context_before:
+            out_lines.append(in_lines[line].decode('utf-8'))
+    start_line, end_line = obj.coordinates[0][0], obj.coordinates[1][0]
+    content_lines = in_lines[start_line:end_line + 1]
+    out_lines.append(b'\n'.join(content_lines).decode('utf-8'))
+    if context:
+        for line in obj.context_after[::-1]:
+            out_lines.append(in_lines[line].decode('utf-8'))
+    return '\n'.join(out_lines)

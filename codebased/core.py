@@ -149,7 +149,8 @@ class Main:
     def gather_objects(self, root: Path) -> T.Iterable[PersistentObject]:
         for repo in find_git_repositories(root):
             for path in get_git_files(repo):
-                content = path.read_bytes()
+                content = get_file_content
+
                 content_hash = hashlib.sha1(content).hexdigest()
                 size = path.stat().st_size
                 last_modified = datetime.fromtimestamp(path.stat().st_mtime)

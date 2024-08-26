@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -42,3 +43,18 @@ def find_git_repositories(root: Path) -> list[Path]:
     parents = find_parent_git_repositories(root)
     children = find_child_git_repositories(root)
     return parents + children
+
+
+# This is a hack to avoid threading through the file contents.
+# Since we have a streaming pipeline the different stages should be able to share the file.
+# i.e. we have computing the SHA1 of the file revision, parsing the file, and creating the embeddings.
+# But we should stop memoizing stuff: https://www.youtube.com/watch?v=IroPQ150F6c.
+@lru_cache(1)
+def get_file_bytes(path: Path) -> bytes:
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+@lru_cache(1)
+def get_file_lines(path: Path) -> list[bytes]:
+    return get_file_bytes(path).split(b'\n')
