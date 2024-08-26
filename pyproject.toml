@@ -22,9 +22,10 @@ tree-sitter-ruby = "^0.21"
 tree-sitter-rust = "^0.21"
 tree-sitter-typescript = "^0.21"
 faiss-cpu = "^1.8.0.post1"
+toml = "^0.10.2"
 
 [tool.poetry.scripts]
-codebased = "codebased.--main--:main"
+codebased = "codebased.__main__:cli"
 
 [build-system]
 requires = ["poetry-core"]
