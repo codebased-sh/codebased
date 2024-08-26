@@ -1,11 +1,21 @@
+create table if not exists repository
+(
+    id           integer primary key,
+    path         text,
+    type         text,
+    unique (path)
+);
+
 create table if not exists file_revision
 (
     id            integer primary key,
+    repository_id integer,
     path          text,
     size          integer,
     last_modified float,
     hash          text,
-    unique (path, hash)
+    foreign key (repository_id) references repository (id),
+    unique (repository_id, path, hash)
 );
 
 create table if not exists object

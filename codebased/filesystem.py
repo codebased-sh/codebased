@@ -9,8 +9,7 @@ from pathlib import Path
 def get_git_files(path: Path) -> list[Path]:
     proc = subprocess.Popen(['git', 'ls-files', '-c'], stdout=subprocess.PIPE, cwd=path)
     relative_paths = proc.stdout.read().decode('utf-8').split('\n')
-    absolute_paths = [path / relative_path for relative_path in relative_paths]
-    return [path for path in absolute_paths if path.is_file()]
+    return [Path(p) for p in relative_paths if (path / p).is_file()]
 
 
 def is_git_repository(path: Path) -> bool:

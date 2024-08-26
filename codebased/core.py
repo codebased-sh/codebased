@@ -15,8 +15,9 @@ import toml
 from openai import OpenAI
 
 from codebased.exceptions import NoApplicationDirectoryException, NotFoundException
-from codebased.filesystem import get_git_files, find_git_repositories
-from codebased.models import FileRevision, PersistentObject, Embedding
+from codebased.filesystem import get_git_files, find_git_repositories, get_file_bytes
+from codebased.models import FileRevision, PersistentObject, Embedding, PersistentRepository, Repository, ObjectHandle, \
+    FileRevisionHandle
 from codebased.parser import parse_objects
 from codebased.storage import persist_object, fetch_objects, DatabaseMigrations, persist_file_revision, fetch_embedding
 
@@ -142,27 +143,58 @@ def get_db(database_file: Path) -> sqlite3.Connection:
     return db
 
 
+def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> PersistentRepository:
+    cursor = db.execute(
+        """
+        INSERT INTO repository
+         (path, type)
+          VALUES (?, ?)
+          ON CONFLICT (path) DO NOTHING
+           RETURNING id
+        """,
+        (repo_object.path, repo_object.type)
+    )
+    persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=cursor.lastrowid)
+    return persistent_repository
+
+
 class Main:
     def __init__(self, context: Context):
         self.context = context
 
-    def gather_objects(self, root: Path) -> T.Iterable[PersistentObject]:
+    def gather_repositories(self, root: Path) -> T.Iterable[PersistentRepository]:
         for repo in find_git_repositories(root):
-            for path in get_git_files(repo):
-                content = get_file_content
+            repo_object = Repository(path=repo, type='git')
+            db = self.context.db
+            persistent_repository = persist_repository(db, repo_object)
+            db.commit()
+            yield persistent_repository
 
+    def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
+        for repo in self.gather_repositories(root):
+            for path in get_git_files(repo.path):
+                file_revision_abs_path = repo.path / path
+                content = get_file_bytes(file_revision_abs_path)
                 content_hash = hashlib.sha1(content).hexdigest()
                 size = path.stat().st_size
                 last_modified = datetime.fromtimestamp(path.stat().st_mtime)
-                file_revision = FileRevision(path, content_hash, size, last_modified)
+                file_revision = FileRevision(
+                    repository_id=repo.id,
+                    path=path,
+                    hash=content_hash,
+                    size=size,
+                    last_modified=last_modified
+                )
                 try:
                     self.context.db.execute("begin;")
                     persistent_file_revision = persist_file_revision(self.context.db, file_revision)
+                    file_revision_handle = FileRevisionHandle(repo, persistent_file_revision)
                     objects = parse_objects(persistent_file_revision)
                     tmp = []
                     for obj in objects:
                         persistent_object = persist_object(self.context.db, obj)
-                        tmp.append(persistent_object)
+                        object_handle = ObjectHandle(file_revision_handle, persistent_object)
+                        tmp.append(object_handle)
                     self.context.db.execute("commit;")
                     yield from tmp
                 except sqlite3.IntegrityError:

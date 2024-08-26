@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import typing as T
 from datetime import datetime
 from pathlib import Path
@@ -10,24 +9,38 @@ import numpy as np
 
 
 @dataclasses.dataclass
+class Repository:
+    path: Path
+    type: T.Literal["git"]
+
+
+@dataclasses.dataclass
+class PersistentRepository(Repository):
+    id: int
+
+
+@dataclasses.dataclass
 class FileRevision:
+    repository_id: int
     path: Path
     hash: str
     size: int
     last_modified: datetime
 
-    @classmethod
-    def from_path(cls, path: Path):
-        content_hash = hashlib.sha1(path.read_bytes()).hexdigest()
-        size = path.stat().st_size
-        last_modified = datetime.fromtimestamp(path.stat().st_mtime)
-        file_revision = FileRevision(path, content_hash, size, last_modified)
-        return file_revision
-
 
 @dataclasses.dataclass
 class PersistentFileRevision(FileRevision):
     id: int
+
+
+@dataclasses.dataclass
+class FileRevisionHandle:
+    repository: PersistentRepository
+    file_revision: PersistentFileRevision
+
+    @property
+    def path(self) -> Path:
+        return self.repository.path / self.file_revision.path
 
 
 @dataclasses.dataclass
@@ -54,6 +67,12 @@ class Object:
 @dataclasses.dataclass
 class PersistentObject(Object):
     id: int
+
+
+@dataclasses.dataclass
+class ObjectHandle:
+    file_revision: FileRevisionHandle
+    object: PersistentObject
 
 
 @dataclasses.dataclass

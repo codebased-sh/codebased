@@ -42,7 +42,8 @@ def persist_object(db: sqlite3.Connection, obj: Object) -> PersistentObject:
 
 def fetch_objects(db: sqlite3.Connection, file_revision: FileRevision) -> T.Iterable[PersistentObject]:
     cursor = db.cursor()
-    cursor.execute(textwrap.dedent("""
+    cursor.execute(
+        textwrap.dedent("""
                     select
                         id,
                         file_revision_id,
@@ -55,9 +56,14 @@ def fetch_objects(db: sqlite3.Connection, file_revision: FileRevision) -> T.Iter
                         coordinates
                     from object
                     where file_revision_id = (
-                        select id from file_revision where path = ? and hash = ?
+                        select id from file_revision where repository_id = ? and path = ? and hash = ?
                     );
-                """), (file_revision.path, file_revision.hash))
+                """),
+        (
+            file_revision.path,
+            file_revision.hash
+        )
+    )
     for row in cursor.fetchall():
         yield PersistentObject(
             id=row['id'],
@@ -113,12 +119,18 @@ class DatabaseMigrations:
 def persist_file_revision(db: sqlite3.Connection, file_revision: FileRevision) -> PersistentFileRevision:
     cursor = db.execute(
         """
-        INSERT INTO file_revisions
-         (path, hash, size, last_modified)
-          VALUES (?, ?, ?, ?)
+        INSERT INTO file_revision
+         (repository_id, path, hash, size, last_modified)
+          VALUES (?, ?, ?, ?, ?)
            RETURNING id
         """,
-        (file_revision.path, file_revision.hash, file_revision.size, file_revision.last_modified),
+        (
+            file_revision.repository_id,
+            file_revision.path,
+            file_revision.hash,
+            file_revision.size,
+            file_revision.last_modified
+        ),
     )
     persistent_revision = PersistentFileRevision(**dataclasses.asdict(file_revision), id=cursor.lastrowid)
     return persistent_revision

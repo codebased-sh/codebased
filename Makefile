@@ -16,3 +16,6 @@ package-build:
 
 package-publish: package-build
 	poetry publish
+
+reset-db:
+	rm ~/.codebased/codebased.db
