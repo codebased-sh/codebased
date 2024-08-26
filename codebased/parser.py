@@ -14,7 +14,7 @@ import tree_sitter_rust
 import tree_sitter_typescript
 
 from codebased.filesystem import get_file_bytes, get_file_lines
-from codebased.models import PersistentFileRevision, Object, Coordinates
+from codebased.models import PersistentFileRevision, Object, Coordinates, ObjectHandle
 
 
 class LanguageImpl:
@@ -487,12 +487,13 @@ LANGUAGES = [
 
 
 def render_object(
-        obj: Object,
-        file_revision: PersistentFileRevision,
+        obj: ObjectHandle,
         *,
         context: bool = True,
         file: bool = True
 ) -> str:
+    file_revision = obj.file_revision
+    obj = obj.object
     out_lines = []
     if file:
         out_lines.append(str(file_revision.path))
