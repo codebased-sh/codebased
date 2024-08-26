@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import dataclasses
+import getpass
 import logging
 import os
 import sqlite3
 import textwrap
+from functools import lru_cache
 from pathlib import Path
 
+import tiktoken
 import toml
 from openai import OpenAI
+from tiktoken import Encoding
 
+from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS
 from codebased.exceptions import NoApplicationDirectoryException
 
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +41,17 @@ class Secrets:
         with open(path) as f:
             secrets = toml.load(f)
             return cls(**secrets)
+
+    @classmethod
+    def from_prompt(cls):
+        env = os.getenv("OPENAI_API_KEY")
+        if env:
+            openai_api_key = getpass.getpass(f"What is your OpenAI API key? [OPENAI_API_KEY={env[:7]}]: ")
+            if not openai_api_key:
+                openai_api_key = env
+        else:
+            openai_api_key = getpass.getpass("What is your OpenAI API key? ")
+        return cls(OPENAI_API_KEY=openai_api_key)
 
 
 @dataclasses.dataclass
@@ -75,12 +91,12 @@ class Config:
     @classmethod
     def prompt_default_model(cls) -> str:
         embedding_model = input("What model do you want to use for embeddings? [text-embedding-ada-002]: ")
-        return embedding_model if embedding_model else 'text-embedding-ada-002'
+        return embedding_model if embedding_model else DEFAULT_MODEL
 
     @classmethod
     def prompt_default_dimensions(cls) -> int:
         text = input("What dimensions do you want to use for embeddings? [1536]: ")
-        dimensions = int(text) if text else 1536
+        dimensions = int(text) if text else DEFAULT_MODEL_DIMENSIONS
         return dimensions
 
     def save(self, path: Path):
@@ -120,7 +136,8 @@ class Settings:
     def create_defaults(self):
         self.application_directory.mkdir(parents=True, exist_ok=True)
         self.config_file.touch()
-        self.secrets_file.write_text(DEFAULT_SECRETS_FILE)
+        Config.from_prompt().save(self.config_file)
+        self.secrets_file.touch()
         self.database_file.touch()
         self.indexes_directory.mkdir(parents=True, exist_ok=True)
 
@@ -152,6 +169,9 @@ class Context:
             application_directory=settings.application_directory,
             indexes_directory=settings.indexes_directory,
         )
+
+    def get_encoding(self) -> Encoding:
+        return tiktoken.encoding_for_model(self.config.embeddings.model)
 
 
 def get_db(database_file: Path) -> sqlite3.Connection:

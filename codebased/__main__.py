@@ -10,15 +10,16 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+from codebased.constants import EMBEDDING_MODEL_CONTEXT_LENGTH
 from codebased.core import Context, greet, Settings, PACKAGE_DIR
 from codebased.embeddings import create_openai_embeddings_sync_batched
 from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
-    Embedding, PersistentFileRevision
-from codebased.parser import parse_objects
+    Embedding, PersistentFileRevision, EmbeddingRequest
+from codebased.parser import parse_objects, render_object
 from codebased.storage import persist_file_revision, persist_object, fetch_objects, fetch_embedding, DatabaseMigrations, \
-    persist_repository
+    persist_repository, fetch_embedding_for_hash
 
 
 def cli():
@@ -94,21 +95,20 @@ class Main:
                     self.context.db.execute("rollback;")
 
     def gather_embeddings(self, root_path: Path) -> T.Iterable[Embedding]:
-        q: T.List[ObjectHandle] = []
+        q: T.List[EmbeddingRequest] = []
 
-        def enqueue(o: ObjectHandle):
-            q.append(o)
+        def enqueue(req: EmbeddingRequest):
+            q.append(req)
 
         def should_drain() -> bool:
             return len(q) > 100
 
+        client = self.context.get_openai_client()
+        encoding = self.context.get_encoding()
+
         def drain() -> T.Iterable[Embedding]:
-            nonlocal q
-            yield from create_openai_embeddings_sync_batched(
-                self.context.get_openai_client(),
-                q,
-                self.context.config.embeddings
-            )
+            nonlocal q, client
+            yield from create_openai_embeddings_sync_batched(client, q, self.context.config.embeddings)
             q.clear()
 
         for obj in self.gather_objects(root_path):
@@ -118,9 +118,22 @@ class Main:
                 embedding = fetch_embedding(self.context.db, obj.object.id)
                 yield embedding
             except NotFoundException:
-                enqueue(obj)
-                if should_drain():
-                    yield from drain()
+                text = render_object(obj)
+                content_hash = hashlib.sha1(text.encode('utf-8')).hexdigest()
+                try:
+                    yield fetch_embedding_for_hash(self.context.db, content_hash)
+                except NotFoundException:
+                    token_count = len(encoding.encode(text))
+                    request = EmbeddingRequest(
+                        object_id=obj.object.id,
+                        content=text,
+                        content_hash=content_hash,
+                        token_count=token_count
+                    )
+                    if 0 < token_count < EMBEDDING_MODEL_CONTEXT_LENGTH:
+                        enqueue(request)
+                        if should_drain():
+                            yield from drain()
         else:
             yield from drain()
 

@@ -23,6 +23,7 @@ tree-sitter-rust = "^0.21"
 tree-sitter-typescript = "^0.21"
 faiss-cpu = "^1.8.0.post1"
 toml = "^0.10.2"
+tiktoken = "^0.7.0"
 
 [tool.poetry.scripts]
 codebased = "codebased.__main__:cli"

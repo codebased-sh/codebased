@@ -105,18 +105,8 @@ def parse_objects(file_revision: PersistentFileRevision) -> list[Object]:
     except UnicodeDecodeError:
         return []
     if impl is None:
-        return [
-            Object(
-                file_revision_id=file_revision.id,
-                name=str(file),
-                language='text',
-                kind='file',
-                byte_range=(0, len(text)),
-                coordinates=get_text_coordinates(text),
-                context_before=[],
-                context_after=[]
-            )
-        ]
+        default_objects = parse_objects_default(file_revision, text)
+        return default_objects
     tree = impl.parser.parse(text)
     root_node = tree.root_node
     root_chunk = Object(
@@ -148,6 +138,22 @@ def parse_objects(file_revision: PersistentFileRevision) -> list[Object]:
                 )
             )
     return chunks
+
+
+def parse_objects_default(file_revision, text):
+    default_objects = [
+        Object(
+            file_revision_id=file_revision.id,
+            name=str(file_revision.path),
+            language='text',
+            kind='file',
+            byte_range=(0, len(text)),
+            coordinates=get_text_coordinates(text),
+            context_before=[],
+            context_after=[]
+        )
+    ]
+    return default_objects
 
 
 PHP_IMPL = LanguageImpl.from_language(

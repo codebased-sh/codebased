@@ -25,7 +25,7 @@ class NotFoundException(CodebasedException, LookupError):
     Raised when something is not found.
     """
 
-    def __init__(self, identifier: int):
+    def __init__(self, identifier: object):
         self.identifier = identifier
         super().__init__(identifier)
 

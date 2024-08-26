@@ -176,6 +176,29 @@ def fetch_embedding(db: sqlite3.Connection, object_id: int) -> Embedding:
     )
 
 
+def fetch_embedding_for_hash(db: sqlite3.Connection, content_hash: str) -> Embedding:
+    cursor = db.execute(
+        """
+        select
+            id,
+            object_id,
+            embedding,
+            content_hash
+        from embedding
+        where content_hash = ?
+        """,
+        (content_hash,)
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise NotFoundException(content_hash)
+    return Embedding(
+        object_id=row['object_id'],
+        data=deserialize_embedding_data(row['embedding']),
+        content_hash=row['content_hash']
+    )
+
+
 def persist_embedding(db: sqlite3.Connection, embedding: Embedding) -> Embedding:
     cursor = db.execute(
         """

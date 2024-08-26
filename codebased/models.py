@@ -74,6 +74,14 @@ class ObjectHandle:
 
 
 @dataclasses.dataclass
+class EmbeddingRequest:
+    object_id: int
+    content: str
+    content_hash: str
+    token_count: int
+
+
+@dataclasses.dataclass
 class Embedding:
     object_id: int
     data: list[float]
