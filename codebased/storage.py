@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -11,8 +12,9 @@ from pathlib import Path
 
 import numpy as np
 
-from codebased.core import logger
 from codebased.models import Object, PersistentObject, FileRevision, PersistentFileRevision, Embedding
+
+logger = logging.getLogger(__name__)
 
 
 def persist_object(db: sqlite3.Connection, obj: Object) -> PersistentObject:
