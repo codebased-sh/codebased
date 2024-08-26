@@ -27,6 +27,9 @@ toml = "^0.10.2"
 [tool.poetry.scripts]
 codebased = "codebased.__main__:cli"
 
+[tool.poetry.group.dev.dependencies]
+ipython = "^7.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
