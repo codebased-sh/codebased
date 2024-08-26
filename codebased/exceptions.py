@@ -27,4 +27,10 @@ class NotFoundException(CodebasedException, LookupError):
 
     def __init__(self, identifier: int):
         self.identifier = identifier
-        super().__init__(f"Not found: {identifier}")
+        super().__init__(identifier)
+
+
+class AlreadyExistsException(CodebasedException):
+    def __init__(self, identifier: int):
+        self.identifier = identifier
+        super().__init__(identifier)

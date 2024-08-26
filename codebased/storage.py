@@ -11,7 +11,7 @@ import textwrap
 import typing as T
 from pathlib import Path
 
-from codebased.exceptions import NotFoundException
+from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.models import Object, PersistentObject, FileRevision, PersistentFileRevision, Embedding, Repository, \
     PersistentRepository
 
@@ -121,10 +121,9 @@ class DatabaseMigrations:
 def persist_file_revision(db: sqlite3.Connection, file_revision: FileRevision) -> PersistentFileRevision:
     cursor = db.execute(
         """
-        INSERT INTO file_revision
+        INSERT OR IGNORE INTO file_revision
          (repository_id, path, hash, size, last_modified)
-          VALUES (?, ?, ?, ?, ?)
-           RETURNING id
+          VALUES (?, ?, ?, ?, ?);
         """,
         (
             file_revision.repository_id,
@@ -134,8 +133,14 @@ def persist_file_revision(db: sqlite3.Connection, file_revision: FileRevision) -
             file_revision.last_modified
         ),
     )
-    persistent_revision = PersistentFileRevision(**dataclasses.asdict(file_revision), id=cursor.lastrowid)
-    return persistent_revision
+
+    row_id = cursor.lastrowid
+    was_inserted = cursor.rowcount == 1
+
+    if was_inserted:
+        persistent_revision = PersistentFileRevision(**dataclasses.asdict(file_revision), id=row_id)
+        return persistent_revision
+    raise AlreadyExistsException(row_id)
 
 
 def serialize_embedding_data(vector: list[float]) -> bytes:

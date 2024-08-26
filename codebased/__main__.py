@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import sqlite3
 import typing as T
 from datetime import datetime
 from pathlib import Path
@@ -13,9 +12,10 @@ import numpy as np
 
 from codebased.core import Context, greet, Settings, PACKAGE_DIR
 from codebased.embeddings import create_openai_embeddings_sync_batched
-from codebased.exceptions import NotFoundException
+from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
-from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, Embedding
+from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
+    Embedding, PersistentFileRevision
 from codebased.parser import parse_objects
 from codebased.storage import persist_file_revision, persist_object, fetch_objects, fetch_embedding, DatabaseMigrations, \
     persist_repository
@@ -73,13 +73,26 @@ class Main:
                         tmp.append(object_handle)
                     self.context.db.execute("commit;")
                     yield from tmp
-                except sqlite3.IntegrityError:
+                except AlreadyExistsException as e:
                     # This super duper should just throw the duplicate identifier. What the heck.
+                    persistent_file_revision = PersistentFileRevision(
+                        id=e.identifier,
+                        repository_id=repo.id,
+                        path=path,
+                        hash=content_hash,
+                        size=size,
+                        last_modified=last_modified
+                    )
+                    file_revision_handle = FileRevisionHandle(
+                        repository=repo,
+                        file_revision=persistent_file_revision
+                    )
                     for obj in fetch_objects(self.context.db, file_revision):
                         yield ObjectHandle(
                             file_revision=file_revision_handle,
                             object=obj
                         )
+                    self.context.db.execute("rollback;")
 
     def gather_embeddings(self, root_path: Path) -> T.Iterable[Embedding]:
         q: T.List[ObjectHandle] = []
