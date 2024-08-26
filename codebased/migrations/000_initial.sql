@@ -21,7 +21,7 @@ create table if not exists file_revision
 create table if not exists object
 (
     id             integer primary key,
-    file_revision  integer,
+    file_revision_id  integer,
     name           text,
     language       text,
     context_before text,
@@ -29,7 +29,7 @@ create table if not exists object
     kind           text,
     byte_range     text,
     coordinates    text,
-    foreign key (file_revision) references file_revision (id)
+    foreign key (file_revision_id) references file_revision (id)
 );
 
 create table if not exists embedding

@@ -9,14 +9,16 @@ from datetime import datetime
 from pathlib import Path
 
 import faiss
+import numpy as np
 
-from codebased.core import Context, persist_repository, greet, Settings, PACKAGE_DIR
+from codebased.core import Context, greet, Settings, PACKAGE_DIR
 from codebased.embeddings import create_openai_embeddings_sync_batched
 from codebased.exceptions import NotFoundException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, Embedding
 from codebased.parser import parse_objects
-from codebased.storage import persist_file_revision, persist_object, fetch_objects, fetch_embedding, DatabaseMigrations
+from codebased.storage import persist_file_revision, persist_object, fetch_objects, fetch_embedding, DatabaseMigrations, \
+    persist_repository
 
 
 def cli():
@@ -72,7 +74,12 @@ class Main:
                     self.context.db.execute("commit;")
                     yield from tmp
                 except sqlite3.IntegrityError:
-                    yield from fetch_objects(self.context.db, file_revision)
+                    # This super duper should just throw the duplicate identifier. What the heck.
+                    for obj in fetch_objects(self.context.db, file_revision):
+                        yield ObjectHandle(
+                            file_revision=file_revision_handle,
+                            object=obj
+                        )
 
     def gather_embeddings(self, root_path: Path) -> T.Iterable[Embedding]:
         q: T.List[ObjectHandle] = []
@@ -85,14 +92,18 @@ class Main:
 
         def drain() -> T.Iterable[Embedding]:
             nonlocal q
-            yield from create_openai_embeddings_sync_batched(self.context.get_openai_client(), q)
+            yield from create_openai_embeddings_sync_batched(
+                self.context.get_openai_client(),
+                q,
+                self.context.config.embeddings
+            )
             q.clear()
 
         for obj in self.gather_objects(root_path):
             # Don't create an embedding if one already exists.
             # It might be nice to store all the embeddings for a file atomically.
             try:
-                embedding = fetch_embedding(self.context.db, obj.id)
+                embedding = fetch_embedding(self.context.db, obj.object.id)
                 yield embedding
             except NotFoundException:
                 enqueue(obj)
@@ -102,7 +113,14 @@ class Main:
             yield from drain()
 
     def create_index(self, root: Path) -> faiss.Index:
-        pass
+        index_l2 = faiss.IndexFlatL2(self.context.config.embeddings.dimensions)
+        index_id_mapping = faiss.IndexIDMap2(index_l2)
+        all_embeddings = list(self.gather_embeddings(root))
+        big_vec = np.array([e.data for e in all_embeddings])
+        assert big_vec.shape == (len(all_embeddings), self.context.config.embeddings.dimensions)
+        ids = [e.object_id for e in all_embeddings]
+        index_id_mapping.add_with_ids(big_vec, ids)
+        return index_id_mapping
 
 
 def main(root: Path):
@@ -114,5 +132,9 @@ def main(root: Path):
     migrations.initialize()
     migrations.migrate()
     m = Main(context)
-    m.gather_objects(root)
+    m.create_index(root)
     # Make an index for each repository.
+
+
+if __name__ == '__main__':
+    cli()

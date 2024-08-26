@@ -11,7 +11,6 @@ import toml
 from openai import OpenAI
 
 from codebased.exceptions import NoApplicationDirectoryException
-from codebased.models import PersistentRepository, Repository
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -133,21 +132,6 @@ def get_db(database_file: Path) -> sqlite3.Connection:
     db = sqlite3.connect(database_file)
     db.row_factory = sqlite3.Row
     return db
-
-
-def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> PersistentRepository:
-    cursor = db.execute(
-        """
-        INSERT INTO repository
-         (path, type)
-          VALUES (?, ?)
-          ON CONFLICT (path) DO NOTHING
-           RETURNING id
-        """,
-        (repo_object.path, repo_object.type)
-    )
-    persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=cursor.lastrowid)
-    return persistent_repository
 
 
 def greet():

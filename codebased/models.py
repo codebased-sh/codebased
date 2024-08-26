@@ -78,7 +78,7 @@ class ObjectHandle:
 @dataclasses.dataclass
 class Embedding:
     object_id: int
-    embedding: np.ndarray
+    data: list[float]
     content_hash: str
 
 

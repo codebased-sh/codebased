@@ -25,6 +25,6 @@ class NotFoundException(CodebasedException, LookupError):
     Raised when something is not found.
     """
 
-    def __init__(self, message: str):
-        self.message = message
-        super().__init__(f"Not found: {message}")
+    def __init__(self, identifier: int):
+        self.identifier = identifier
+        super().__init__(f"Not found: {identifier}")

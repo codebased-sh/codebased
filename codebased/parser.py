@@ -487,13 +487,13 @@ LANGUAGES = [
 
 
 def render_object(
-        obj: ObjectHandle,
+        obj_handle: ObjectHandle,
         *,
         context: bool = True,
         file: bool = True
 ) -> str:
-    file_revision = obj.file_revision
-    obj = obj.object
+    file_revision = obj_handle.file_revision
+    obj = obj_handle.object
     out_lines = []
     if file:
         out_lines.append(str(file_revision.path))

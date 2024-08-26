@@ -6,13 +6,14 @@ import logging
 import os
 import re
 import sqlite3
+import struct
 import textwrap
 import typing as T
 from pathlib import Path
 
-import numpy as np
-
-from codebased.models import Object, PersistentObject, FileRevision, PersistentFileRevision, Embedding
+from codebased.exceptions import NotFoundException
+from codebased.models import Object, PersistentObject, FileRevision, PersistentFileRevision, Embedding, Repository, \
+    PersistentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,8 @@ def fetch_objects(db: sqlite3.Connection, file_revision: FileRevision) -> T.Iter
                     );
                 """),
         (
-            file_revision.path,
+            file_revision.repository_id,
+            str(file_revision.path),
             file_revision.hash
         )
     )
@@ -126,7 +128,7 @@ def persist_file_revision(db: sqlite3.Connection, file_revision: FileRevision) -
         """,
         (
             file_revision.repository_id,
-            file_revision.path,
+            str(file_revision.path),
             file_revision.hash,
             file_revision.size,
             file_revision.last_modified
@@ -134,6 +136,16 @@ def persist_file_revision(db: sqlite3.Connection, file_revision: FileRevision) -
     )
     persistent_revision = PersistentFileRevision(**dataclasses.asdict(file_revision), id=cursor.lastrowid)
     return persistent_revision
+
+
+def serialize_embedding_data(vector: list[float]) -> bytes:
+    dimension = len(vector)
+    return struct.pack(f'{dimension}f', *vector)
+
+
+def deserialize_embedding_data(data: bytes) -> list[float]:
+    dimension = len(data) // struct.calcsize('f')
+    return list(struct.unpack(f'{dimension}f', data))
 
 
 def fetch_embedding(db: sqlite3.Connection, object_id: int) -> Embedding:
@@ -150,9 +162,11 @@ def fetch_embedding(db: sqlite3.Connection, object_id: int) -> Embedding:
         (object_id,)
     )
     row = cursor.fetchone()
+    if row is None:
+        raise NotFoundException(object_id)
     return Embedding(
         object_id=row['object_id'],
-        embedding=np.frombuffer(row['embedding'], dtype=np.float32),
+        data=deserialize_embedding_data(row['embedding']),
         content_hash=row['content_hash']
     )
 
@@ -167,9 +181,24 @@ def persist_embedding(db: sqlite3.Connection, embedding: Embedding) -> Embedding
         """,
         (
             embedding.object_id,
-            embedding.embedding.tobytes(),
+            serialize_embedding_data(embedding.data),
             embedding.content_hash
         )
     )
     persistent_embedding = Embedding(**dataclasses.asdict(embedding))
     return persistent_embedding
+
+
+def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> PersistentRepository:
+    cursor = db.execute(
+        """
+        INSERT INTO repository
+         (path, type)
+          VALUES (?, ?)
+          ON CONFLICT (path) DO NOTHING
+           RETURNING id
+        """,
+        (str(repo_object.path), repo_object.type)
+    )
+    persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=cursor.lastrowid)
+    return persistent_repository
