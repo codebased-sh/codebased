@@ -9,7 +9,7 @@ repository = "https://github.com/codebased-sh/codebased"
 [tool.poetry.dependencies]
 python = "^3.8"
 tree-sitter = "^0.21"
-openai = "^0.27"
+openai = "^1.42.0"
 tree-sitter-c = "^0.21"
 tree-sitter-c-sharp = "^0.21"
 tree-sitter-cpp = "^0.21"
