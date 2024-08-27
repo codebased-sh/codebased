@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import curses
 import hashlib
 import os
 import sqlite3
@@ -12,7 +13,7 @@ import faiss
 import numpy as np
 
 from codebased.constants import EMBEDDING_MODEL_CONTEXT_LENGTH
-from codebased.core import Context, greet, Settings, PACKAGE_DIR
+from codebased.core import Context, Settings, PACKAGE_DIR
 from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
@@ -23,8 +24,102 @@ from codebased.storage import persist_file_revision, persist_object, fetch_objec
     persist_repository, fetch_embedding_for_hash, fetch_object_handle, persist_embedding
 
 
+def interactive_main(root: Path):
+    app = get_app()
+    faiss_index = app.create_index(root)
+    curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index))
+
+
+def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
+    # Clear screen and hide cursor
+    stdscr.clear()
+    curses.curs_set(0)
+
+    # Initialize variables
+    query = ""
+    results = []
+    active_index = 0
+
+    # Don't wait for input when calling getch
+    stdscr.nodelay(1)
+
+    while True:
+        # Get screen height and width
+        height, width = stdscr.getmaxyx()
+
+        # Clear the screen
+        stdscr.clear()
+
+        # Display the current query
+        stdscr.addstr(0, 0, f"Search: {query}")
+
+        # Display the results
+        display_interactive_results(stdscr, results, 2, height - 2, active_index)
+
+        # Refresh the screen
+        stdscr.refresh()
+
+        # Get user input
+        try:
+            key = stdscr.getch()
+        except:
+            key = -1
+
+        if key == ord('\n'):  # Enter key
+            break
+        elif key == 27:  # Escape key
+            break
+        elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
+            query = query[:-1]
+        elif key == curses.KEY_UP:
+            active_index = max(0, active_index - 1)
+        elif key == curses.KEY_DOWN:
+            active_index = min(len(results) - 1, active_index + 1)
+        elif key != -1:
+            query += chr(key)
+
+        # Update search results
+        results = app.perform_search(query, faiss_index)
+        active_index = min(active_index, max(0, len(results) - 1))
+
+        # Small delay to prevent too rapid updates
+        # time.sleep(0.1)
+
+
+def display_interactive_results(stdscr, results: list[SearchResult], start_line: int, max_lines: int,
+                                active_index: int):
+    for i, result in enumerate(results):
+        if start_line + i >= max_lines:
+            break
+        obj = result.object_handle
+        score = result.score
+        result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name} = {score}"
+        stdscr.addstr(start_line + i, 0, result_str[:curses.COLS - 1])
+
+    # Display detailed information for the active result
+    if 0 <= active_index < len(results):
+        active_result = results[active_index]
+        detailed_info = get_detailed_info(active_result)
+        render_start = start_line + len(results) + 1
+        for i, line in enumerate(detailed_info.split('\n')):
+            if render_start + i >= max_lines:
+                break
+            stdscr.addstr(render_start + i, 0, line[:curses.COLS - 1])
+
+
+def get_detailed_info(result: SearchResult) -> str:
+    # This function should return a string with detailed information about the result
+    # You can customize this based on what information you want to display
+    return render_object(result.object_handle, context=True, file=False, line_numbers=True)
+
+
 def cli():
     parser = argparse.ArgumentParser(description="Codebased")
+    parser.add_argument(
+        '-i',
+        action='store_true',
+        help="Interactive mode. If set, the program will run in interactive mode.",
+    )
     parser.add_argument(
         "--root",
         type=Path,
@@ -33,7 +128,10 @@ def cli():
         required=False,
     )
     args = parser.parse_args()
-    main(args.root)
+    if args.i:
+        interactive_main(args.root)
+    else:
+        main(args.root)
 
 
 commits, rollbacks, begins = 0, 0, 0
@@ -60,7 +158,7 @@ def begin(db: sqlite3.Connection):
     db.execute("begin;")
 
 
-class Main:
+class App:
     def __init__(self, context: Context):
         self.context = context
 
@@ -72,6 +170,7 @@ class Main:
             begin(db)
             persistent_repository = persist_repository(db, repo_object)
             commit(db)
+            assert persistent_repository.id != 0
             yield persistent_repository
 
     def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
@@ -209,18 +308,27 @@ def display_results(results: list[SearchResult]) -> None:
 
 
 def main(root: Path):
+    app = get_app()
+    faiss_index = app.create_index(root)
+    less_interactive_loop(app, faiss_index)
+
+
+def less_interactive_loop(app: App, faiss_index: faiss.Index):
+    while True:
+        query = input("What do you want to search for? ")
+        results = app.perform_search(query, faiss_index)
+        display_results(results)
+
+
+def get_app() -> App:
     settings = Settings.default()
     settings.ensure_ok()
     context = Context.from_settings(settings)
     migrations = DatabaseMigrations(context.db, PACKAGE_DIR / "migrations")
     migrations.initialize()
     migrations.migrate()
-    m = Main(context)
-    faiss_index = m.create_index(root)
-    while True:
-        query = input("What do you want to search for? ")
-        results = m.perform_search(query, faiss_index)
-        display_results(results)
+    app = App(context)
+    return app
 
 
 if __name__ == '__main__':

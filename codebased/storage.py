@@ -218,7 +218,8 @@ def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> Persi
         """,
         (str(repo_object.path), repo_object.type, repo_object.type)
     )
-    persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=cursor.lastrowid)
+    repo_id = cursor.fetchone()[0]
+    persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=repo_id)
     return persistent_repository
 
 
