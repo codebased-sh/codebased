@@ -42,21 +42,21 @@ commits, rollbacks, begins = 0, 0, 0
 def rollback(db: sqlite3.Connection):
     global begins, commits, rollbacks
     rollbacks += 1
-    print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
+    # print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
     db.execute("rollback;")
 
 
 def commit(db: sqlite3.Connection):
     global begins, commits, rollbacks
     commits += 1
-    print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
+    # print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
     db.execute("commit;")
 
 
 def begin(db: sqlite3.Connection):
     global begins, commits, rollbacks
     begins += 1
-    print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
+    # print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
     db.execute("begin;")
 
 
@@ -136,6 +136,8 @@ class Main:
 
         def drain() -> T.Iterable[Embedding]:
             nonlocal q, client
+            if not q:
+                return
             embeddings = create_openai_embeddings_sync_batched(client, q, self.context.config.embeddings)
             begin(context.db)
             try:

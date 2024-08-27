@@ -17,7 +17,7 @@ from tiktoken import Encoding
 from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS
 from codebased.exceptions import NoApplicationDirectoryException
 
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DEFAULT_SECRETS_FILE = textwrap.dedent("""
@@ -56,9 +56,8 @@ class Secrets:
 
 @dataclasses.dataclass
 class EmbeddingsConfig:
-    model: str = 'text-embedding-3-large'
-    dimensions: int = 1536
-    similarity_threshold: float = 0.8
+    model: str = DEFAULT_MODEL
+    dimensions: int = DEFAULT_MODEL_DIMENSIONS
 
 
 @dataclasses.dataclass
@@ -91,7 +90,7 @@ class Config:
 
     @classmethod
     def prompt_default_model(cls) -> str:
-        embedding_model = input("What model do you want to use for embeddings? [text-embedding-ada-002]: ")
+        embedding_model = input(f"What model do you want to use for embeddings? [{DEFAULT_MODEL}]: ")
         return embedding_model if embedding_model else DEFAULT_MODEL
 
     @classmethod
