@@ -13,7 +13,7 @@ from pathlib import Path
 
 from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.models import Object, PersistentObject, FileRevision, PersistentFileRevision, Embedding, Repository, \
-    PersistentRepository
+    PersistentRepository, ObjectHandle, FileRevisionHandle
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +67,7 @@ def fetch_objects(db: sqlite3.Connection, file_revision: FileRevision) -> T.Iter
         )
     )
     for row in cursor.fetchall():
-        yield PersistentObject(
-            id=row['id'],
-            file_revision_id=row['file_revision_id'],
-            name=row['name'],
-            language=row['language'],
-            context_before=json.loads(row['context_before']),
-            context_after=json.loads(row['context_after']),
-            kind=row['kind'],
-            byte_range=json.loads(row['byte_range']),
-            coordinates=json.loads(row['coordinates'])
-        )
+        yield deserialize_object_row(row)
 
 
 class DatabaseMigrations:
@@ -230,3 +220,91 @@ def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> Persi
     )
     persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=cursor.lastrowid)
     return persistent_repository
+
+
+def fetch_object_handle(db: sqlite3.Connection, object_id: int) -> ObjectHandle:
+    obj = fetch_object(db, object_id)
+    file_revision = fetch_file_revision(db, obj.file_revision_id)
+    repository = fetch_repository(db, file_revision.repository_id)
+    file_revision_handle = FileRevisionHandle(file_revision=file_revision, repository=repository)
+    return ObjectHandle(
+        file_revision=file_revision_handle,
+        object=obj
+    )
+
+
+def fetch_object(db: sqlite3.Connection, object_id: int) -> PersistentObject:
+    cursor = db.execute(
+        """
+        select
+            id,
+            file_revision_id,
+            name,
+            language,
+            context_before,
+            context_after,
+            kind,
+            byte_range,
+            coordinates
+        from object
+        where id = ?
+        """,
+        (object_id,)
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise NotFoundException(object_id)
+    return deserialize_object_row(row)
+
+
+def fetch_file_revision(db: sqlite3.Connection, file_revision_id: int) -> PersistentFileRevision:
+    cursor = db.execute(
+        """
+        select
+            id,
+            repository_id,
+            path,
+            hash,
+            size,
+            last_modified
+        from file_revision
+        where id = ?
+        """,
+        (file_revision_id,)
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise NotFoundException(file_revision_id)
+    return PersistentFileRevision(**dataclasses.asdict(row))
+
+
+def fetch_repository(db: sqlite3.Connection, repository_id: int) -> PersistentRepository:
+    cursor = db.execute(
+        """
+        select
+            id,
+            path,
+            type
+        from repository
+        where id = ?
+        """,
+        (repository_id,)
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise NotFoundException(repository_id)
+    return PersistentRepository(**dataclasses.asdict(row))
+
+
+def deserialize_object_row(row: sqlite3.Row) -> PersistentObject:
+    return PersistentObject(
+        id=row['id'],
+        file_revision_id=row['file_revision_id'],
+        name=row['name'],
+        language=row['language'],
+        context_before=json.loads(row['context_before']),
+        context_after=json.loads(row['context_after']),
+        kind=row['kind'],
+        byte_range=json.loads(row['byte_range']),
+        coordinates=json.loads(row['coordinates'])
+    )

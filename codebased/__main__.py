@@ -12,14 +12,14 @@ import numpy as np
 
 from codebased.constants import EMBEDDING_MODEL_CONTEXT_LENGTH
 from codebased.core import Context, greet, Settings, PACKAGE_DIR
-from codebased.embeddings import create_openai_embeddings_sync_batched
+from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
     Embedding, PersistentFileRevision, EmbeddingRequest
 from codebased.parser import parse_objects, render_object
 from codebased.storage import persist_file_revision, persist_object, fetch_objects, fetch_embedding, DatabaseMigrations, \
-    persist_repository, fetch_embedding_for_hash
+    persist_repository, fetch_embedding_for_hash, fetch_object_handle
 
 
 def cli():
@@ -149,6 +149,22 @@ class Main:
         index_id_mapping.add_with_ids(big_vec, ids)
         return index_id_mapping
 
+    def perform_search(self, query: str, faiss_index: faiss.Index) -> list[ObjectHandle]:
+        embedding = create_ephemeral_embedding(
+            self.context.openai_client,
+            query,
+            self.context.config.embeddings
+        )
+        distances_s, ids_s = faiss_index.search(np.array([embedding]), k=5)
+        distances, object_ids = distances_s[0], ids_s[0]
+        handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
+        return handles
+
+
+def display_results(results: list[ObjectHandle]) -> None:
+    for result in results:
+        print(f"{result.file_revision.path}:{result.object.coordinates[0][0]} {result.object.name}")
+
 
 def main(root: Path):
     greet()
@@ -162,7 +178,8 @@ def main(root: Path):
     faiss_index = m.create_index(root)
     while True:
         query = input("What do you want to search for? ")
-        ...
+        results = m.perform_search(query, faiss_index)
+        display_results(results)
 
 
 if __name__ == '__main__':

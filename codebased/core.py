@@ -58,6 +58,7 @@ class Secrets:
 class EmbeddingsConfig:
     model: str = 'text-embedding-3-large'
     dimensions: int = 1536
+    similarity_threshold: float = 0.8
 
 
 @dataclasses.dataclass
