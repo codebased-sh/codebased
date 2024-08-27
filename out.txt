@@ -1,0 +1,113 @@
+🚧 Work in progress 🚧
+Hello and welcome to Codebased, a suite of tools to make software development fast and painless.
+I'm Max Conradt, founder of Codebased.
+I'm creating Codebased because I love writing software and love people who write software.
+If you ever need any help, text me at +1 (913) 808-7343. For now, I will even help you write your code.
+That's my real phone number, because Codebased will never be anything without its users.
+You can also check out the Discord: https://discord.gg/CA6Jzn2S. I'll be more responsive on Discord because I don't
+look at my phone while I'm working, but am on Discord when I'm working.
+class Secrets:
+    def __post_init__(self):
+        if not self.OPENAI_API_KEY:
+            raise ValueError("Codebased requires an OpenAI API key for now. Ask Max if you'd like one to test with.")
+class Context:
+    def openai_client(self) -> OpenAI:
+        return OpenAI(api_key=self.secrets.OPENAI_API_KEY)
+logger = logging.getLogger(__name__)
+class App:
+    def create_index(self, root: Path) -> faiss.Index:
+        index_l2 = faiss.IndexFlatL2(self.context.config.embeddings.dimensions)
+        index_id_mapping = faiss.IndexIDMap2(index_l2)
+        all_embeddings = list(self.gather_embeddings(root))
+        big_vec = np.array([e.data for e in all_embeddings])
+        assert big_vec.shape == (len(all_embeddings), self.context.config.embeddings.dimensions)
+        ids = [e.object_id for e in all_embeddings]
+        logger.debug(f"Adding {len(ids)} embeddings to index: {ids}")
+        index_id_mapping.add_with_ids(big_vec, ids)
+        return index_id_mapping
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="Codebased" uuid="3b38ba52-2c83-457b-a823-13001378566e">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$USER_HOME$/.codebased/codebased.db</jdbc-url>
+      <jdbc-additional-properties>
+        <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
+      </jdbc-additional-properties>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+  </component>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.8 (codebased)" />
+  </component>
+  <component name="ProjectRootManager">
+    <output url="file://$PROJECT_DIR$/out" />
+  </component>
+</project>
+class EmbeddingRequest:
+    object_id: int
+    content: str
+    content_hash: str
+    token_count: int
+_JAVASCRIPT_TAG_QUERY = """
+(method_definition
+  name: (property_identifier) @name) @definition.method
+
+(class
+  name: (_) @name) @definition.class
+
+(class_declaration
+  name: (_) @name) @definition.class
+
+(function_expression
+  name: (identifier) @name) @definition.function
+
+(function_declaration
+  name: (identifier) @name) @definition.function
+
+(generator_function
+  name: (identifier) @name) @definition.function
+
+(generator_function_declaration
+  name: (identifier) @name) @definition.function
+
+(variable_declarator
+    name: (identifier) @name
+    value: [(arrow_function) (function_expression)]) @definition.function
+
+(variable_declarator 
+    name: (identifier) @name
+    value: [(arrow_function) (function_expression)]) @definition.function
+
+(assignment_expression
+  left: [
+    (identifier) @name
+    (member_expression
+      property: (property_identifier) @name)
+  ]
+  right: [(arrow_function) (function_expression)]) @definition.function
+
+(pair
+  key: (property_identifier) @name
+  value: [(arrow_function) (function_expression)]) @definition.function
+
+(export_statement 
+  value: (assignment_expression 
+    left: (identifier) @name 
+    right: ([
+      (number)
+      (string)
+      (identifier)
+      (undefined)
+      (null)
+      (new_expression)
+      (binary_expression)
+      (call_expression)
+    ]))) @definition.constant
+    
+    """

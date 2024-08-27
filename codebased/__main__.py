@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import curses
 import logging
 import os
@@ -31,22 +32,37 @@ logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE)
 logger = logging.getLogger(__name__)
 
 
+def restore_terminal():
+    """Restore the terminal to a sane state."""
+    curses.nocbreak()
+    curses.echo()
+    curses.curs_set(1)  # Show cursor
+    curses.reset_shell_mode()
+    curses.endwin()
+    # Exit alternate screen
+    sys.stdout.write("\033[?1049l")
+    sys.stdout.flush()
+
+
 def interactive_main(root: Path, n: int):
     with STATS.timer("codebased.startup.duration"):
         with STATS.timer("codebased.startup.app.duration"):
             app = get_app()
         with STATS.timer("codebased.startup.index.duration"):
             faiss_index = app.create_index(root)
-    curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
-    STATS.import_cache_info(
-        "codebased.get_file_bytes.lru_cache_hit_rate",
-        get_file_bytes.cache_info(),
-    )
-    STATS.import_cache_info(
-        "codebased.perform_search.lru_cache_hit_rate",
-        App.perform_search.cache_info(),
-    )
-    logger.debug(STATS.dumps())
+    try:
+        atexit.register(restore_terminal)
+        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
+    finally:
+        STATS.import_cache_info(
+            "codebased.get_file_bytes.lru_cache_hit_rate",
+            get_file_bytes.cache_info(),
+        )
+        STATS.import_cache_info(
+            "codebased.perform_search.lru_cache_hit_rate",
+            App.perform_search.cache_info(),
+        )
+        logger.debug(STATS.dumps())
 
 
 @dataclass
