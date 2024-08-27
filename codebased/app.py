@@ -21,6 +21,7 @@ from codebased.filesystem import find_git_repositories, get_git_files, get_file_
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
     PersistentFileRevision, Embedding, EmbeddingRequest, SearchResult
 from codebased.parser import parse_objects, render_object
+from codebased.stats import STATS
 from codebased.storage import persist_repository, persist_file_revision, persist_object, fetch_objects, \
     persist_embedding, fetch_embedding, fetch_embedding_for_hash, fetch_object_handle, DatabaseMigrations
 
@@ -195,11 +196,13 @@ class App:
         index_l2 = faiss.IndexFlatL2(self.context.config.embeddings.dimensions)
         index_id_mapping = faiss.IndexIDMap2(index_l2)
         all_embeddings = list(self.gather_embeddings(root))
-        big_vec = np.array([e.data for e in all_embeddings])
-        assert big_vec.shape == (len(all_embeddings), self.context.config.embeddings.dimensions)
-        ids = [e.object_id for e in all_embeddings]
-        logger.debug(f"Adding {len(ids)} embeddings to index: {ids}")
-        index_id_mapping.add_with_ids(big_vec, ids)
+        STATS.increment("codebased.index.objects.total", len(all_embeddings))
+        with STATS.timer("codebased.index.create.duration"):
+            big_vec = np.array([e.data for e in all_embeddings])
+            assert big_vec.shape == (len(all_embeddings), self.context.config.embeddings.dimensions)
+            ids = [e.object_id for e in all_embeddings]
+            logger.debug(f"Adding {len(ids)} embeddings to index: {ids}")
+            index_id_mapping.add_with_ids(big_vec, ids)
         return index_id_mapping
 
     @lru_cache

@@ -32,7 +32,7 @@ def open_editor(editor: Literal["vi", "idea", "code"], *, file: Path, row: int, 
         stdscr.clear()
         stdscr.refresh()
     elif editor == "idea":
-        subprocess.run(["idea", f"--line {row}", str(file)])
+        subprocess.run(["idea", "--line", str(row), str(file)])
     elif editor == "code":
         subprocess.run(["code", "--goto", f"{file}:{row}:{column}"])
     else:
