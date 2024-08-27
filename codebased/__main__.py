@@ -4,6 +4,7 @@ import argparse
 import curses
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import field, dataclass
 from pathlib import Path
 import threading
@@ -28,6 +29,20 @@ class SharedState:
     active_index: int = 0
     scroll_position: int = 0
     needs_refresh: bool = True
+    latest_completed_search_id: int = -1
+    current_search_id: int = 0
+
+
+def perform_search(search_id, app, faiss_index, query, shared_state, state_lock):
+    try:
+        results = app.perform_search(query, faiss_index)
+        with state_lock:
+            shared_state.results = results
+            shared_state.latest_completed_search_id = search_id
+            shared_state.needs_refresh = True
+    except Exception as e:
+        print(f"Error in search: {e}")
+        raise
 
 
 def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
@@ -40,19 +55,17 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
     def refresh_screen():
         while True:
             with state_lock:
-                if shared_state.needs_refresh:
-                    height, width = stdscr.getmaxyx()
-                    stdscr.clear()
-                    stdscr.addstr(0, 0, f"Search: {shared_state.query}")
-                    display_interactive_results(stdscr, shared_state.results, 2, height - 2,
-                                                shared_state.active_index, shared_state.scroll_position)
-                    stdscr.refresh()
-                    shared_state.needs_refresh = False
-
-            time.sleep(0.05)  # Short sleep to reduce CPU usage
+                height, width = stdscr.getmaxyx()
+                stdscr.clear()
+                stdscr.addstr(0, 0, f"Search: {shared_state.query}")
+                display_interactive_results(stdscr, shared_state.results, 2, height - 2,
+                                            shared_state.active_index, shared_state.scroll_position)
+                stdscr.refresh()
+            time.sleep(0.05)
 
     refresh_thread = threading.Thread(target=refresh_screen, daemon=True)
     refresh_thread.start()
+    executor = ThreadPoolExecutor()
 
     while True:
         key = stdscr.getch()
@@ -90,9 +103,14 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
             else:
                 continue  # Skip refresh if no key was pressed
 
-            shared_state.results = app.perform_search(shared_state.query, faiss_index)
-            shared_state.active_index = min(shared_state.active_index, max(0, len(shared_state.results) - 1))
-            shared_state.needs_refresh = True
+            executor.submit(perform_search, shared_state.current_search_id, app, faiss_index, shared_state.query,
+                            shared_state, state_lock)
+
+            if shared_state.latest_completed_search_id > shared_state.current_search_id:
+                # New results are available
+                shared_state.current_search_id = shared_state.latest_completed_search_id
+                shared_state.active_index = min(shared_state.active_index, max(0, len(shared_state.results) - 1))
+                shared_state.needs_refresh = True
 
     return None
 
