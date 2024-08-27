@@ -103,8 +103,10 @@ class Main:
         def should_drain() -> bool:
             return len(q) > 100
 
-        client = self.context.get_openai_client()
-        encoding = self.context.get_encoding()
+        context = self.context
+        client = context.openai_client
+        context1 = self.context
+        encoding = context1.embedding_model_encoding
 
         def drain() -> T.Iterable[Embedding]:
             nonlocal q, client
@@ -157,8 +159,10 @@ def main(root: Path):
     migrations.initialize()
     migrations.migrate()
     m = Main(context)
-    m.create_index(root)
-    # Make an index for each repository.
+    faiss_index = m.create_index(root)
+    while True:
+        query = input("What do you want to search for? ")
+        ...
 
 
 if __name__ == '__main__':

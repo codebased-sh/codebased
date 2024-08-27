@@ -6,6 +6,7 @@ import logging
 import os
 import sqlite3
 import textwrap
+from functools import cached_property
 from pathlib import Path
 
 import tiktoken
@@ -156,7 +157,12 @@ class Context:
     application_directory: Path
     indexes_directory: Path
 
-    def get_openai_client(self) -> OpenAI:
+    @cached_property
+    def embedding_model_encoding(self) -> Encoding:
+        return tiktoken.encoding_for_model(self.config.embeddings.model)
+
+    @cached_property
+    def openai_client(self) -> OpenAI:
         return OpenAI(api_key=self.secrets.OPENAI_API_KEY)
 
     @classmethod
@@ -168,9 +174,6 @@ class Context:
             application_directory=settings.application_directory,
             indexes_directory=settings.indexes_directory,
         )
-
-    def get_encoding(self) -> Encoding:
-        return tiktoken.encoding_for_model(self.config.embeddings.model)
 
 
 def get_db(database_file: Path) -> sqlite3.Connection:
