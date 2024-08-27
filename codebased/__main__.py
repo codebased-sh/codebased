@@ -207,7 +207,6 @@ def display_results(results: list[SearchResult]) -> None:
 
 
 def main(root: Path):
-    greet()
     settings = Settings.default()
     settings.ensure_ok()
     context = Context.from_settings(settings)

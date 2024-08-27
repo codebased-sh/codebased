@@ -134,6 +134,7 @@ class Settings:
             raise NoApplicationDirectoryException(self.application_directory)
 
     def create_defaults(self):
+        greet()
         self.application_directory.mkdir(parents=True, exist_ok=True)
         self.config_file.touch()
         Config.from_prompt().save(self.config_file)
