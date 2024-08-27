@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import curses
 import os
+import time
+from dataclasses import field, dataclass
 from pathlib import Path
 import threading
 import faiss
@@ -18,84 +20,102 @@ def interactive_main(root: Path):
     curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index))
 
 
-def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
+@dataclass
+class SharedState:
+    query: str = ""
+    results: list = field(default_factory=list)
+    active_index: int = 0
+    scroll_position: int = 0
+    needs_refresh: bool = True
+
+
+def interactive_loop(stdscr, app: App, faiss_index: faiss.Index) -> SearchResult | None:
     curses.curs_set(0)
-
-    query = ""
-    results = []
-    active_index = 0
-
-    # Initialize the screen with some content
-    height, width = stdscr.getmaxyx()
-    stdscr.clear()
-    stdscr.addstr(0, 0, "Search: ")
-    stdscr.addstr(2, 0, "Type to start searching...")
-    stdscr.refresh()
-
     stdscr.nodelay(1)
 
-    refresh_event = threading.Event()
-    stop_event = threading.Event()
+    shared_state = SharedState()
+    state_lock = threading.Lock()
 
     def refresh_screen():
-        while not stop_event.is_set():
-            if refresh_event.wait(timeout=0.1):
-                height, width = stdscr.getmaxyx()
-                stdscr.clear()
-                stdscr.addstr(0, 0, f"Search: {query}")
-                display_interactive_results(stdscr, results, 2, height - 2, active_index)
-                stdscr.refresh()
-                refresh_event.clear()
+        while True:
+            with state_lock:
+                if shared_state.needs_refresh:
+                    height, width = stdscr.getmaxyx()
+                    stdscr.clear()
+                    stdscr.addstr(0, 0, f"Search: {shared_state.query}")
+                    display_interactive_results(stdscr, shared_state.results, 2, height - 2,
+                                                shared_state.active_index, shared_state.scroll_position)
+                    stdscr.refresh()
+                    shared_state.needs_refresh = False
 
-    refresh_thread = threading.Thread(target=refresh_screen)
+            time.sleep(0.05)  # Short sleep to reduce CPU usage
+
+    refresh_thread = threading.Thread(target=refresh_screen, daemon=True)
     refresh_thread.start()
 
-    try:
-        while True:
-            key = stdscr.getch()
+    while True:
+        key = stdscr.getch()
 
+        with state_lock:
             if key == ord('\n'):  # Enter key
+                if shared_state.results:
+                    return shared_state.results[shared_state.active_index]
                 break
             elif key == 27:  # Escape key
                 break
             elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
-                query = query[:-1]
+                shared_state.query = shared_state.query[:-1]
             elif key == curses.KEY_UP:
-                active_index = max(0, active_index - 1)
+                shared_state.active_index = max(0, shared_state.active_index - 1)
+                shared_state.scroll_position = 0
             elif key == curses.KEY_DOWN:
-                active_index = min(len(results) - 1, active_index + 1)
+                shared_state.active_index = min(len(shared_state.results) - 1, shared_state.active_index + 1)
+                shared_state.scroll_position = 0
+            elif key == curses.KEY_PPAGE:  # Page Up
+                shared_state.scroll_position = max(0, shared_state.scroll_position - 10)
+            elif key == curses.KEY_NPAGE:  # Page Down
+                shared_state.scroll_position += 10
             elif key != -1:
-                query += chr(key)
+                shared_state.query += chr(key)
             else:
                 continue  # Skip refresh if no key was pressed
 
-            results = app.perform_search(query, faiss_index)
-            active_index = min(active_index, max(0, len(results) - 1))
-            refresh_event.set()
+            shared_state.results = app.perform_search(shared_state.query, faiss_index)
+            shared_state.active_index = min(shared_state.active_index, max(0, len(shared_state.results) - 1))
+            shared_state.needs_refresh = True
 
-    finally:
-        stop_event.set()
-        refresh_thread.join()
+    return None
 
 
-def display_interactive_results(stdscr, results: list[SearchResult], start_line: int, max_lines: int,
-                                active_index: int):
+def display_interactive_results(stdscr, results: list[SearchResult], start_line: int, max_lines: int, active_index: int,
+                                scroll_position: int):
+    height, width = stdscr.getmaxyx()
+
+    # Display results
     for i, result in enumerate(results):
-        if start_line + i >= max_lines:
+        if i >= max_lines // 2:
             break
         obj = result.object_handle
         score = result.score
         result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name} = {score}"
-        stdscr.addstr(start_line + i, 0, result_str[:curses.COLS - 1])
+        stdscr.addstr(start_line + i, 0, result_str[:width - 1])
 
+    # Display detailed information for the active result
     if 0 <= active_index < len(results):
         active_result = results[active_index]
         detailed_info = get_detailed_info(active_result)
-        render_start = start_line + len(results) + 1
-        for i, line in enumerate(detailed_info.split('\n')):
-            if render_start + i >= max_lines:
+        render_start = start_line + len(results[:max_lines // 2]) + 1
+        detailed_lines = detailed_info.split('\n')
+
+        for i, line in enumerate(detailed_lines[scroll_position:]):
+            if render_start + i >= height:
                 break
-            stdscr.addstr(render_start + i, 0, line[:curses.COLS - 1])
+            stdscr.addstr(render_start + i, 0, line[:width - 1])
+
+        # Display scroll indicator
+        if len(detailed_lines) > height - render_start:
+            scroll_percentage = min(100, int(100 * scroll_position / (len(detailed_lines) - (height - render_start))))
+            stdscr.addstr(height - 1, width - 5, f"{scroll_percentage:3d}%")
 
 
 def get_detailed_info(result: SearchResult) -> str:
