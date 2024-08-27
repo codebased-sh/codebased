@@ -9,7 +9,11 @@ lfg:
 	git add -A
 	git commit -m "Ship it"
 	git push origin master
-	echo "Great job, Max! Here's $$(od -An -N2 -i /dev/urandom | tr -d ' ') good boy points."
+	@current_gbp=$$(cat GBPs.txt 2>/dev/null || echo 0); \
+	new_points=$$(od -An -N2 -i /dev/urandom | tr -d ' '); \
+	new_total=$$((current_gbp + new_points)); \
+	echo $$new_total > GBPs.txt; \
+	echo "Great job, Max! You earned $$new_points good boy points. Your new total is $$new_total."
 
 package-build:
 	poetry build
