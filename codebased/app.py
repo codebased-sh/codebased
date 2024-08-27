@@ -29,23 +29,20 @@ logger = logging.getLogger(__name__)
 
 
 def rollback(db: sqlite3.Connection):
-    global begins, commits, rollbacks
+    global rollbacks
     rollbacks += 1
-    # print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
     db.execute("rollback;")
 
 
 def commit(db: sqlite3.Connection):
-    global begins, commits, rollbacks
+    global commits
     commits += 1
-    # print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
     db.execute("commit;")
 
 
 def begin(db: sqlite3.Connection):
-    global begins, commits, rollbacks
+    global begins
     begins += 1
-    # print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
     db.execute("begin;")
 
 
