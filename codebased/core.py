@@ -187,3 +187,4 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 def greet():
     with open(PACKAGE_DIR / "GREETING.txt") as f:
         print(f.read())
+

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sqlite3
+import sys
 import typing as T
 from datetime import datetime
 from functools import lru_cache
@@ -71,9 +72,14 @@ class App:
             yield persistent_repository
 
     def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
-        for repo in tqdm.tqdm(list(self.gather_repositories(root))):
+        for repo in tqdm.tqdm(list(self.gather_repositories(root)), file=sys.stderr):
             logger.debug(f"Indexing {repo.path} with id {repo.id}")
-            for path in tqdm.tqdm(get_git_files(repo.path), leave=False, desc=f"Indexing {repo.path.name}"):
+            for path in tqdm.tqdm(
+                    get_git_files(repo.path),
+                    leave=False,
+                    desc=f"Indexing {repo.path.name}",
+                    file=sys.stderr
+            ):
                 file_revision_abs_path = repo.path / path
                 content = get_file_bytes(file_revision_abs_path)
                 content_hash = hashlib.sha1(content).hexdigest()
@@ -197,13 +203,13 @@ class App:
         return index_id_mapping
 
     @lru_cache
-    def perform_search(self, query: str, faiss_index: faiss.Index) -> list[SearchResult]:
+    def perform_search(self, query: str, faiss_index: faiss.Index, *, n: int = 10) -> list[SearchResult]:
         embedding = create_ephemeral_embedding(
             self.context.openai_client,
             query,
             self.context.config.embeddings
         )
-        distances_s, ids_s = faiss_index.search(np.array([embedding]), k=10)
+        distances_s, ids_s = faiss_index.search(np.array([embedding]), k=n)
         distances, object_ids = distances_s[0], ids_s[0]
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
         results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]

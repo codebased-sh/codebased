@@ -4,12 +4,15 @@ import argparse
 import curses
 import logging
 import os
+import re
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import field, dataclass
 from pathlib import Path
 import threading
 import faiss
+from colorama import init, Fore, Style
 
 from codebased.app import App, get_app
 from codebased.editor import open_editor
@@ -18,6 +21,7 @@ from codebased.models import SearchResult
 from codebased.parser import render_object
 from codebased.stats import STATS
 
+init(autoreset=True)  # Initialize colorama
 LOG_FILE = Path.home() / ".codebased/codebased.log"
 try:
     os.mkdir(LOG_FILE.parent)
@@ -27,13 +31,13 @@ logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE)
 logger = logging.getLogger(__name__)
 
 
-def interactive_main(root: Path):
+def interactive_main(root: Path, n: int):
     with STATS.timer("codebased.startup.duration"):
         with STATS.timer("codebased.startup.app.duration"):
             app = get_app()
         with STATS.timer("codebased.startup.index.duration"):
             faiss_index = app.create_index(root)
-    curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index))
+    curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
     STATS.import_cache_info(
         "codebased.get_file_bytes.lru_cache_hit_rate",
         get_file_bytes.cache_info(),
@@ -56,9 +60,9 @@ class SharedState:
     current_search_id: int = 0
 
 
-def perform_search(search_id, app, faiss_index, query, shared_state, state_lock):
+def perform_search(search_id, app, faiss_index, query, shared_state, state_lock, n):
     try:
-        results = app.perform_search(query, faiss_index)
+        results = app.perform_search(query, faiss_index, n=n)
         with state_lock:
             shared_state.results = results
             shared_state.latest_completed_search_id = search_id
@@ -68,7 +72,7 @@ def perform_search(search_id, app, faiss_index, query, shared_state, state_lock)
         raise
 
 
-def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
+def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, n: int):
     curses.curs_set(0)
     stdscr.nodelay(1)
 
@@ -127,7 +131,7 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
                 continue  # Skip refresh if no key was pressed
 
             executor.submit(perform_search, shared_state.current_search_id, app, faiss_index, shared_state.query,
-                            shared_state, state_lock)
+                            shared_state, state_lock, n=n)
 
             if shared_state.latest_completed_search_id > shared_state.current_search_id:
                 # New results are available
@@ -176,6 +180,12 @@ def get_detailed_info(result: SearchResult) -> str:
 def cli():
     parser = argparse.ArgumentParser(description="Codebased")
     parser.add_argument(
+        'query',
+        nargs='?',
+        default=None,
+        help="Optional query string. If provided, the program will run in non-interactive mode with this query.",
+    )
+    parser.add_argument(
         '-i',
         action='store_true',
         help="Interactive mode. If set, the program will run in interactive mode.",
@@ -187,35 +197,62 @@ def cli():
         default=os.getcwd(),
         required=False,
     )
+    parser.add_argument(
+        "-n",
+        type=int,
+        default=10,
+        help="Number of results to display (default: 10)",
+    )
     args = parser.parse_args()
     if args.i:
-        interactive_main(args.root)
+        interactive_main(args.root, args.n)
     else:
-        main(args.root)
+        noninteractive_main(args.root, args.query, args.n)
+
+
+def is_stdout_piped():
+    return not os.isatty(sys.stdout.fileno())
+
+
+def print_search_result(result: SearchResult) -> None:
+    obj = result.object_handle
+    is_piped = is_stdout_piped()
+
+    if not is_piped:
+        # Print metadata to stderr only if not piped
+        print(
+            f"{Fore.MAGENTA}{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}{Style.RESET_ALL}",
+            file=sys.stderr
+        )
+
+    # Render the object with line numbers
+    rendered_content = render_object(obj, context=True, file=False, line_numbers=True)
+
+    # Print content to stdout and optionally line numbers to stderr
+    for line, code in re.findall(r'^(\s*\d+)\s(.*)$', rendered_content, re.MULTILINE):
+        if not is_piped:
+            print(f"{Fore.GREEN}{line}{Style.RESET_ALL}", file=sys.stderr, end='')
+        print(code)  # This goes to stdout
+
+    if not is_piped:
+        print(file=sys.stderr)  # Add a newline after the result for better separation
 
 
 def display_results(results: list[SearchResult]) -> None:
     for result in results:
-        obj = result.object_handle
-        score = result.score
-        print(f"{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name} = {score}")
-        print()
-        print(render_object(obj, context=True, file=False, line_numbers=True))
+        print_search_result(result)
 
 
-def main(root: Path):
+def noninteractive_main(root: Path, query: str, n: int):
     app = get_app()
     faiss_index = app.create_index(root)
-    less_interactive_loop(app, faiss_index)
-    logger.debug(STATS.dumps())
-
-
-def less_interactive_loop(app: App, faiss_index: faiss.Index):
-    while True:
-        query = input("What do you want to search for? ")
-        results = app.perform_search(query, faiss_index)
+    try:
+        results = app.perform_search(query, faiss_index, n=n)
         display_results(results)
+    finally:
+        logger.debug(STATS.dumps())
 
 
 if __name__ == '__main__':
-    cli()
+    # cli()
+    pass
