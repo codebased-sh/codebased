@@ -204,6 +204,8 @@ def display_results(results: list[SearchResult]) -> None:
         obj = result.object_handle
         score = result.score
         print(f"{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name} = {score}")
+        print()
+        print(render_object(obj, context=True, file=False, line_numbers=True))
 
 
 def main(root: Path):

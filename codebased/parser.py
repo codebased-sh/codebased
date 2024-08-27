@@ -496,7 +496,8 @@ def render_object(
         obj_handle: ObjectHandle,
         *,
         context: bool = True,
-        file: bool = True
+        file: bool = True,
+        line_numbers: bool = False
 ) -> str:
     file_revision = obj_handle.file_revision
     obj = obj_handle.object
@@ -505,13 +506,27 @@ def render_object(
         out_lines.append(str(file_revision.path))
         out_lines.append('')
     in_lines = get_file_lines(file_revision.path)
+    max_line_no = max(
+        obj.coordinates[0][0],
+        obj.coordinates[1][0],
+        *obj.context_before,
+        *obj.context_after
+    ) + 1
+    line_width = len(str(max_line_no))
+
+    def line_formatter(line_index: int, line_content: str) -> str:
+        if line_numbers:
+            line_number = line_index + 1
+            return str(line_number).rjust(line_width) + " " + line_content
+        return line_content
+
     if context:
         for line in obj.context_before:
-            out_lines.append(in_lines[line].decode('utf-8'))
+            out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
     start_line, end_line = obj.coordinates[0][0], obj.coordinates[1][0]
-    content_lines = in_lines[start_line:end_line + 1]
-    out_lines.append(b'\n'.join(content_lines).decode('utf-8'))
+    for i in range(start_line, end_line + 1):
+        out_lines.append(line_formatter(i, in_lines[i].decode('utf-8')))
     if context:
         for line in obj.context_after[::-1]:
-            out_lines.append(in_lines[line].decode('utf-8'))
+            out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
     return '\n'.join(out_lines)
