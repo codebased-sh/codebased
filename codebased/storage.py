@@ -14,58 +14,61 @@ from pathlib import Path
 from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.models import Object, PersistentObject, FileRevision, PersistentFileRevision, Embedding, Repository, \
     PersistentRepository, ObjectHandle, FileRevisionHandle
+from codebased.stats import STATS
 
 logger = logging.getLogger(__name__)
 
 
 def persist_object(db: sqlite3.Connection, obj: Object) -> PersistentObject:
-    cursor = db.execute(
-        """
-        INSERT INTO object
-         (file_revision_id, name, language, context_before, context_after, kind, byte_range, coordinates)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           RETURNING id
-        """,
-        (
-            obj.file_revision_id,
-            obj.name,
-            obj.language,
-            json.dumps(obj.context_before),
-            json.dumps(obj.context_after),
-            obj.kind,
-            json.dumps(obj.byte_range),
-            json.dumps(obj.coordinates)
+    with STATS.timer("codebased.storage.persist_object.duration"):
+        cursor = db.execute(
+            """
+            INSERT INTO object
+             (file_revision_id, name, language, context_before, context_after, kind, byte_range, coordinates)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               RETURNING id
+            """,
+            (
+                obj.file_revision_id,
+                obj.name,
+                obj.language,
+                json.dumps(obj.context_before),
+                json.dumps(obj.context_after),
+                obj.kind,
+                json.dumps(obj.byte_range),
+                json.dumps(obj.coordinates)
+            )
         )
-    )
-    persistent_object = PersistentObject(**dataclasses.asdict(obj), id=cursor.lastrowid)
-    return persistent_object
+        persistent_object = PersistentObject(**dataclasses.asdict(obj), id=cursor.lastrowid)
+        return persistent_object
 
 
 def fetch_objects(db: sqlite3.Connection, file_revision: FileRevision) -> T.Iterable[PersistentObject]:
-    cursor = db.cursor()
-    cursor.execute(
-        textwrap.dedent("""
-                    select
-                        id,
-                        file_revision_id,
-                        name,
-                        language,
-                        context_before,
-                        context_after,
-                        kind,
-                        byte_range,
-                        coordinates
-                    from object
-                    where file_revision_id = (
-                        select id from file_revision where repository_id = ? and path = ? and hash = ?
-                    );
-                """),
-        (
-            file_revision.repository_id,
-            str(file_revision.path),
-            file_revision.hash
+    with STATS.timer("codebased.storage.fetch_objects.duration"):
+        cursor = db.cursor()
+        cursor.execute(
+            textwrap.dedent("""
+                        select
+                            id,
+                            file_revision_id,
+                            name,
+                            language,
+                            context_before,
+                            context_after,
+                            kind,
+                            byte_range,
+                            coordinates
+                        from object
+                        where file_revision_id = (
+                            select id from file_revision where repository_id = ? and path = ? and hash = ?
+                        );
+                    """),
+            (
+                file_revision.repository_id,
+                str(file_revision.path),
+                file_revision.hash
+            )
         )
-    )
     for row in cursor.fetchall():
         yield deserialize_object_row(row)
 
@@ -109,28 +112,29 @@ class DatabaseMigrations:
 
 
 def persist_file_revision(db: sqlite3.Connection, file_revision: FileRevision) -> PersistentFileRevision:
-    cursor = db.execute(
-        """
-        INSERT OR IGNORE INTO file_revision
-         (repository_id, path, hash, size, last_modified)
-          VALUES (?, ?, ?, ?, ?);
-        """,
-        (
-            file_revision.repository_id,
-            str(file_revision.path),
-            file_revision.hash,
-            file_revision.size,
-            file_revision.last_modified
-        ),
-    )
+    with STATS.timer("codebased.storage.persist_file_revision.duration"):
+        cursor = db.execute(
+            """
+            INSERT OR IGNORE INTO file_revision
+             (repository_id, path, hash, size, last_modified)
+              VALUES (?, ?, ?, ?, ?);
+            """,
+            (
+                file_revision.repository_id,
+                str(file_revision.path),
+                file_revision.hash,
+                file_revision.size,
+                file_revision.last_modified
+            ),
+        )
 
-    row_id = cursor.lastrowid
-    was_inserted = cursor.rowcount == 1
+        row_id = cursor.lastrowid
+        was_inserted = cursor.rowcount == 1
 
-    if was_inserted:
-        persistent_revision = PersistentFileRevision(**dataclasses.asdict(file_revision), id=row_id)
-        return persistent_revision
-    raise AlreadyExistsException(row_id)
+        if was_inserted:
+            persistent_revision = PersistentFileRevision(**dataclasses.asdict(file_revision), id=row_id)
+            return persistent_revision
+        raise AlreadyExistsException(row_id)
 
 
 def serialize_embedding_data(vector: list[float]) -> bytes:
@@ -144,168 +148,176 @@ def deserialize_embedding_data(data: bytes) -> list[float]:
 
 
 def fetch_embedding(db: sqlite3.Connection, object_id: int) -> Embedding:
-    cursor = db.execute(
-        """
-        select
-            id,
-            object_id,
-            embedding,
-            content_hash
-        from embedding
-        where object_id = ?
-        """,
-        (object_id,)
-    )
-    row = cursor.fetchone()
-    if row is None:
-        raise NotFoundException(object_id)
-    return Embedding(
-        object_id=row['object_id'],
-        data=deserialize_embedding_data(row['embedding']),
-        content_hash=row['content_hash']
-    )
+    with STATS.timer("codebased.storage.fetch_embedding.duration"):
+        cursor = db.execute(
+            """
+            select
+                id,
+                object_id,
+                embedding,
+                content_hash
+            from embedding
+            where object_id = ?
+            """,
+            (object_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise NotFoundException(object_id)
+        return Embedding(
+            object_id=row['object_id'],
+            data=deserialize_embedding_data(row['embedding']),
+            content_hash=row['content_hash']
+        )
 
 
 def fetch_embedding_for_hash(db: sqlite3.Connection, content_hash: str) -> Embedding:
-    cursor = db.execute(
-        """
-        select
-            id,
-            object_id,
-            embedding,
-            content_hash
-        from embedding
-        where content_hash = ?
-        """,
-        (content_hash,)
-    )
-    row = cursor.fetchone()
-    if row is None:
-        raise NotFoundException(content_hash)
-    return Embedding(
-        object_id=row['object_id'],
-        data=deserialize_embedding_data(row['embedding']),
-        content_hash=row['content_hash']
-    )
+    with STATS.timer("codebased.storage.fetch_embedding_for_hash.duration"):
+        cursor = db.execute(
+            """
+            select
+                id,
+                object_id,
+                embedding,
+                content_hash
+            from embedding
+            where content_hash = ?
+            """,
+            (content_hash,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise NotFoundException(content_hash)
+        return Embedding(
+            object_id=row['object_id'],
+            data=deserialize_embedding_data(row['embedding']),
+            content_hash=row['content_hash']
+        )
 
 
 def persist_embedding(db: sqlite3.Connection, embedding: Embedding) -> Embedding:
-    db.execute(
-        """
-        INSERT INTO embedding
-         (object_id, embedding, content_hash)
-          VALUES (?, ?, ?)
-           RETURNING id
-        """,
-        (
-            embedding.object_id,
-            serialize_embedding_data(embedding.data),
-            embedding.content_hash
+    with STATS.timer("codebased.storage.persist_embedding.duration"):
+        db.execute(
+            """
+            INSERT INTO embedding
+             (object_id, embedding, content_hash)
+              VALUES (?, ?, ?)
+               RETURNING id
+            """,
+            (
+                embedding.object_id,
+                serialize_embedding_data(embedding.data),
+                embedding.content_hash
+            )
         )
-    )
-    persistent_embedding = Embedding(**dataclasses.asdict(embedding))
-    return persistent_embedding
+        persistent_embedding = Embedding(**dataclasses.asdict(embedding))
+        return persistent_embedding
 
 
 def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> PersistentRepository:
-    cursor = db.execute(
-        """
-        INSERT OR IGNORE INTO repository
-         (path, type)
-          VALUES (?, ?)
-          ON CONFLICT (path) DO UPDATE SET type = ?
-           RETURNING id;
-        """,
-        (str(repo_object.path), repo_object.type, repo_object.type)
-    )
-    repo_id = cursor.fetchone()[0]
-    persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=repo_id)
-    return persistent_repository
+    with STATS.timer("codebased.storage.persist_repository.duration"):
+        cursor = db.execute(
+            """
+            INSERT OR IGNORE INTO repository
+             (path, type)
+              VALUES (?, ?)
+              ON CONFLICT (path) DO UPDATE SET type = ?
+               RETURNING id;
+            """,
+            (str(repo_object.path), repo_object.type, repo_object.type)
+        )
+        repo_id = cursor.fetchone()[0]
+        persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=repo_id)
+        return persistent_repository
 
 
 def fetch_object_handle(db: sqlite3.Connection, object_id: int) -> ObjectHandle:
-    obj = fetch_object(db, object_id)
-    file_revision = fetch_file_revision(db, obj.file_revision_id)
-    repository = fetch_repository(db, file_revision.repository_id)
-    file_revision_handle = FileRevisionHandle(file_revision=file_revision, repository=repository)
-    return ObjectHandle(
-        file_revision=file_revision_handle,
-        object=obj
-    )
+    with STATS.timer("codebased.storage.fetch_object_handle.duration"):
+        obj = fetch_object(db, object_id)
+        file_revision = fetch_file_revision(db, obj.file_revision_id)
+        repository = fetch_repository(db, file_revision.repository_id)
+        file_revision_handle = FileRevisionHandle(file_revision=file_revision, repository=repository)
+        return ObjectHandle(
+            file_revision=file_revision_handle,
+            object=obj
+        )
 
 
 def fetch_object(db: sqlite3.Connection, object_id: int) -> PersistentObject:
-    cursor = db.execute(
-        """
-        select
-            id,
-            file_revision_id,
-            name,
-            language,
-            context_before,
-            context_after,
-            kind,
-            byte_range,
-            coordinates
-        from object
-        where id = ?
-        """,
-        (object_id,)
-    )
-    row = cursor.fetchone()
-    if row is None:
-        raise NotFoundException(object_id)
-    return deserialize_object_row(row)
+    with STATS.timer("codebased.storage.fetch_object.duration"):
+        cursor = db.execute(
+            """
+            select
+                id,
+                file_revision_id,
+                name,
+                language,
+                context_before,
+                context_after,
+                kind,
+                byte_range,
+                coordinates
+            from object
+            where id = ?
+            """,
+            (object_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise NotFoundException(object_id)
+        return deserialize_object_row(row)
 
 
 def fetch_file_revision(db: sqlite3.Connection, file_revision_id: int) -> PersistentFileRevision:
-    cursor = db.execute(
-        """
-        select
-            id,
-            repository_id,
-            path,
-            hash,
-            size,
-            last_modified
-        from file_revision
-        where id = ?
-        """,
-        (file_revision_id,)
-    )
-    row = cursor.fetchone()
-    if row is None:
-        raise NotFoundException(file_revision_id)
-    return PersistentFileRevision(
-        id=row['id'],
-        repository_id=row['repository_id'],
-        path=Path(row['path']),
-        hash=row['hash'],
-        size=row['size'],
-        last_modified=row['last_modified']
-    )
+    with STATS.timer("codebased.storage.fetch_file_revision.duration"):
+        cursor = db.execute(
+            """
+            select
+                id,
+                repository_id,
+                path,
+                hash,
+                size,
+                last_modified
+            from file_revision
+            where id = ?
+            """,
+            (file_revision_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise NotFoundException(file_revision_id)
+        return PersistentFileRevision(
+            id=row['id'],
+            repository_id=row['repository_id'],
+            path=Path(row['path']),
+            hash=row['hash'],
+            size=row['size'],
+            last_modified=row['last_modified']
+        )
 
 
 def fetch_repository(db: sqlite3.Connection, repository_id: int) -> PersistentRepository:
-    cursor = db.execute(
-        """
-        select
-            id,
-            path,
-            type
-        from repository
-        where id = ?
-        """,
-        (repository_id,)
-    )
-    row = cursor.fetchone()
-    if row is None:
-        raise NotFoundException(repository_id)
-    return PersistentRepository(
-        id=row['id'],
-        path=Path(row['path']),
-        type=row['type']
-    )
+    with STATS.timer("codebased.storage.fetch_repository.duration"):
+        cursor = db.execute(
+            """
+            select
+                id,
+                path,
+                type
+            from repository
+            where id = ?
+            """,
+            (repository_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise NotFoundException(repository_id)
+        return PersistentRepository(
+            id=row['id'],
+            path=Path(row['path']),
+            type=row['type']
+        )
 
 
 def deserialize_object_row(row: sqlite3.Row) -> PersistentObject:

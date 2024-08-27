@@ -5,6 +5,8 @@ import subprocess
 from functools import lru_cache
 from pathlib import Path
 
+from codebased.stats import STATS
+
 
 def get_git_files(path: Path) -> list[Path]:
     proc = subprocess.Popen(['git', 'ls-files', '-c'], stdout=subprocess.PIPE, cwd=path)
@@ -50,8 +52,11 @@ def find_git_repositories(root: Path) -> list[Path]:
 # But we should stop memoizing stuff: https://www.youtube.com/watch?v=IroPQ150F6c.
 @lru_cache(1)
 def get_file_bytes(path: Path) -> bytes:
-    with open(path, 'rb') as f:
-        return f.read()
+    with STATS.timer("codebased.get_file_bytes.duration"):
+        with open(path, 'rb') as f:
+            _bytes = f.read()
+            STATS.increment("codebased.get_file_bytes.bytes_read", len(_bytes))
+            return _bytes
 
 
 @lru_cache(1)

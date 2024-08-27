@@ -13,18 +13,36 @@ import faiss
 
 from codebased.app import App, get_app
 from codebased.editor import open_editor
+from codebased.filesystem import get_file_bytes
 from codebased.models import SearchResult
 from codebased.parser import render_object
+from codebased.stats import STATS
 
 LOG_FILE = Path.home() / ".codebased/codebased.log"
-# LOG_FILE.touch()
+try:
+    os.mkdir(LOG_FILE.parent)
+except FileExistsError:
+    pass
 logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE)
+logger = logging.getLogger(__name__)
 
 
 def interactive_main(root: Path):
-    app = get_app()
-    faiss_index = app.create_index(root)
+    with STATS.timer("codebased.startup.duration"):
+        with STATS.timer("codebased.startup.app.duration"):
+            app = get_app()
+        with STATS.timer("codebased.startup.index.duration"):
+            faiss_index = app.create_index(root)
     curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index))
+    STATS.import_cache_info(
+        "codebased.get_file_bytes.lru_cache_hit_rate",
+        get_file_bytes.cache_info(),
+    )
+    STATS.import_cache_info(
+        "codebased.perform_search.lru_cache_hit_rate",
+        App.perform_search.cache_info(),
+    )
+    logger.debug(STATS.dumps())
 
 
 @dataclass
@@ -189,6 +207,7 @@ def main(root: Path):
     app = get_app()
     faiss_index = app.create_index(root)
     less_interactive_loop(app, faiss_index)
+    logger.debug(STATS.dumps())
 
 
 def less_interactive_loop(app: App, faiss_index: faiss.Index):
