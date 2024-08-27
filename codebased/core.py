@@ -20,12 +20,6 @@ from codebased.exceptions import NoApplicationDirectoryException
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-DEFAULT_SECRETS_FILE = textwrap.dedent("""
-# Fill in your OpenAI API key, used for embeddings, etc. and never leaves your computer.
-OPENAI_API_KEY = "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-""")
-
 PACKAGE_DIR: Path = Path(__file__).parent
 
 

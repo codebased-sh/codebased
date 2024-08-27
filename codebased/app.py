@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sqlite3
 import typing as T
 from datetime import datetime
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import faiss
 import numpy as np
+import tqdm
 
 from codebased.constants import EMBEDDING_MODEL_CONTEXT_LENGTH
 from codebased.core import Context, Settings, PACKAGE_DIR
@@ -22,6 +24,8 @@ from codebased.storage import persist_repository, persist_file_revision, persist
     persist_embedding, fetch_embedding, fetch_embedding_for_hash, fetch_object_handle, DatabaseMigrations
 
 commits, rollbacks, begins = 0, 0, 0
+
+logger = logging.getLogger(__name__)
 
 
 def rollback(db: sqlite3.Connection):
@@ -48,6 +52,15 @@ def begin(db: sqlite3.Connection):
 class App:
     def __init__(self, context: Context):
         self.context = context
+        self.setup_logging()
+
+    def setup_logging(self):
+        log_file = self.context.application_directory / "codebased.log"
+        logging.basicConfig(
+            filename=str(log_file),
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
     def gather_repositories(self, root: Path) -> T.Iterable[PersistentRepository]:
         repositories = find_git_repositories(root)
@@ -61,8 +74,9 @@ class App:
             yield persistent_repository
 
     def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
-        for repo in self.gather_repositories(root):
-            for path in get_git_files(repo.path):
+        for repo in tqdm.tqdm(list(self.gather_repositories(root))):
+            logger.debug(f"Indexing {repo.path} with id {repo.id}")
+            for path in tqdm.tqdm(get_git_files(repo.path), leave=False, desc=f"Indexing {repo.path.name}"):
                 file_revision_abs_path = repo.path / path
                 content = get_file_bytes(file_revision_abs_path)
                 content_hash = hashlib.sha1(content).hexdigest()
@@ -79,6 +93,8 @@ class App:
                     begin(self.context.db)
                     persistent_file_revision = persist_file_revision(self.context.db, file_revision)
                     file_revision_handle = FileRevisionHandle(repo, persistent_file_revision)
+                    logger.debug(
+                        f"Indexing new file revision for {file_revision_abs_path} w/ id {persistent_file_revision.id}")
                     objects = parse_objects(persistent_file_revision)
                     tmp = []
                     for obj in objects:
@@ -101,7 +117,9 @@ class App:
                         repository=repo,
                         file_revision=persistent_file_revision
                     )
+                    logger.debug(f"Fetching objects for {file_revision_abs_path} w/ id {persistent_file_revision.id}")
                     for obj in fetch_objects(self.context.db, file_revision):
+                        logger.debug(f"Fetched object {obj.name} w/ id {obj.id}")
                         yield ObjectHandle(
                             file_revision=file_revision_handle,
                             object=obj
