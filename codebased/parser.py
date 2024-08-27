@@ -510,7 +510,7 @@ def render_object(
         obj.coordinates[0][0],
         obj.coordinates[1][0],
         *obj.context_before,
-        *obj.context_after
+        # *obj.context_after
     ) + 1
     line_width = len(str(max_line_no))
 
@@ -526,7 +526,7 @@ def render_object(
     start_line, end_line = obj.coordinates[0][0], obj.coordinates[1][0]
     for i in range(start_line, end_line + 1):
         out_lines.append(line_formatter(i, in_lines[i].decode('utf-8')))
-    if context:
-        for line in obj.context_after[::-1]:
-            out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
+    # if context:
+    #     for line in obj.context_after[::-1]:
+    #         out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
     return '\n'.join(out_lines)
