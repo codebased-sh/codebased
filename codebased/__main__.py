@@ -107,7 +107,7 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
                     shared_state.needs_refresh = True
                 continue
             elif key == 27:  # Escape key
-                break
+                pass
             elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
                 shared_state.query = shared_state.query[:-1]
             elif key == curses.KEY_UP:
@@ -135,7 +135,7 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
                 shared_state.active_index = min(shared_state.active_index, max(0, len(shared_state.results) - 1))
                 shared_state.needs_refresh = True
 
-    return None
+    raise RuntimeError("Should never exit.")
 
 
 def display_interactive_results(stdscr, results: list[SearchResult], start_line: int, max_lines: int, active_index: int,
