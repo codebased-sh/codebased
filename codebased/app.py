@@ -97,6 +97,7 @@ class App:
                     for obj in objects:
                         persistent_object = persist_object(self.context.db, obj)
                         object_handle = ObjectHandle(file_revision_handle, persistent_object)
+                        logger.debug(f"Indexing new object {obj.name} w/ id {persistent_object.id}")
                         tmp.append(object_handle)
                     commit(self.context.db)
                     yield from tmp
@@ -161,7 +162,14 @@ class App:
                 text = render_object(obj)
                 content_hash = hashlib.sha1(text.encode('utf-8')).hexdigest()
                 try:
-                    yield fetch_embedding_for_hash(self.context.db, content_hash)
+                    cached = fetch_embedding_for_hash(self.context.db, content_hash)
+                    embedding_for_object = Embedding(
+                        object_id=obj.object.id,
+                        data=cached.data,
+                        content_hash=cached.content_hash
+                    )
+                    yield embedding_for_object
+                    # yield persist_embedding(self.context.db, embedding_for_object)
                 except NotFoundException:
                     token_count = len(encoding.encode(text))
                     request = EmbeddingRequest(
@@ -184,6 +192,7 @@ class App:
         big_vec = np.array([e.data for e in all_embeddings])
         assert big_vec.shape == (len(all_embeddings), self.context.config.embeddings.dimensions)
         ids = [e.object_id for e in all_embeddings]
+        logger.debug(f"Adding {len(ids)} embeddings to index: {ids}")
         index_id_mapping.add_with_ids(big_vec, ids)
         return index_id_mapping
 
@@ -198,6 +207,8 @@ class App:
         distances, object_ids = distances_s[0], ids_s[0]
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
         results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]
+        for result in results:
+            logger.debug(f"Result: {result}")
         return results
 
 

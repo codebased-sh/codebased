@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import curses
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,10 @@ from codebased.app import App, get_app
 from codebased.editor import open_editor
 from codebased.models import SearchResult
 from codebased.parser import render_object
+
+LOG_FILE = Path.home() / ".codebased/codebased.log"
+# LOG_FILE.touch()
+logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE)
 
 
 def interactive_main(root: Path):
