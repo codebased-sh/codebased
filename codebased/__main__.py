@@ -267,8 +267,3 @@ def noninteractive_main(root: Path, query: str, n: int):
         display_results(results)
     finally:
         logger.debug(STATS.dumps())
-
-
-if __name__ == '__main__':
-    # cli()
-    pass
