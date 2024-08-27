@@ -11,7 +11,7 @@ import faiss
 import numpy as np
 
 from codebased.constants import EMBEDDING_MODEL_CONTEXT_LENGTH
-from codebased.core import Context
+from codebased.core import Context, Settings, PACKAGE_DIR
 from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.exceptions import AlreadyExistsException, NotFoundException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
@@ -19,7 +19,7 @@ from codebased.models import PersistentRepository, Repository, ObjectHandle, Fil
     PersistentFileRevision, Embedding, EmbeddingRequest, SearchResult
 from codebased.parser import parse_objects, render_object
 from codebased.storage import persist_repository, persist_file_revision, persist_object, fetch_objects, \
-    persist_embedding, fetch_embedding, fetch_embedding_for_hash, fetch_object_handle
+    persist_embedding, fetch_embedding, fetch_embedding_for_hash, fetch_object_handle, DatabaseMigrations
 
 commits, rollbacks, begins = 0, 0, 0
 
@@ -184,3 +184,14 @@ class App:
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
         results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]
         return results
+
+
+def get_app() -> App:
+    settings = Settings.default()
+    settings.ensure_ok()
+    context = Context.from_settings(settings)
+    migrations = DatabaseMigrations(context.db, PACKAGE_DIR / "migrations")
+    migrations.initialize()
+    migrations.migrate()
+    app = App(context)
+    return app
