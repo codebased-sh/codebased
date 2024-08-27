@@ -89,3 +89,9 @@ class Embedding:
 
 
 Coordinates = T.Tuple[T.Tuple[int, int], T.Tuple[int, int]]
+
+
+@dataclasses.dataclass
+class SearchResult:
+    object_handle: ObjectHandle
+    score: float

@@ -190,7 +190,7 @@ def fetch_embedding_for_hash(db: sqlite3.Connection, content_hash: str) -> Embed
 
 
 def persist_embedding(db: sqlite3.Connection, embedding: Embedding) -> Embedding:
-    cursor = db.execute(
+    db.execute(
         """
         INSERT INTO embedding
          (object_id, embedding, content_hash)
@@ -210,13 +210,13 @@ def persist_embedding(db: sqlite3.Connection, embedding: Embedding) -> Embedding
 def persist_repository(db: sqlite3.Connection, repo_object: Repository) -> PersistentRepository:
     cursor = db.execute(
         """
-        INSERT INTO repository
+        INSERT OR IGNORE INTO repository
          (path, type)
           VALUES (?, ?)
-          ON CONFLICT (path) DO NOTHING
-           RETURNING id
+          ON CONFLICT (path) DO UPDATE SET type = ?
+           RETURNING id;
         """,
-        (str(repo_object.path), repo_object.type)
+        (str(repo_object.path), repo_object.type, repo_object.type)
     )
     persistent_repository = PersistentRepository(**dataclasses.asdict(repo_object), id=cursor.lastrowid)
     return persistent_repository
@@ -275,7 +275,14 @@ def fetch_file_revision(db: sqlite3.Connection, file_revision_id: int) -> Persis
     row = cursor.fetchone()
     if row is None:
         raise NotFoundException(file_revision_id)
-    return PersistentFileRevision(**dataclasses.asdict(row))
+    return PersistentFileRevision(
+        id=row['id'],
+        repository_id=row['repository_id'],
+        path=Path(row['path']),
+        hash=row['hash'],
+        size=row['size'],
+        last_modified=row['last_modified']
+    )
 
 
 def fetch_repository(db: sqlite3.Connection, repository_id: int) -> PersistentRepository:
@@ -293,7 +300,11 @@ def fetch_repository(db: sqlite3.Connection, repository_id: int) -> PersistentRe
     row = cursor.fetchone()
     if row is None:
         raise NotFoundException(repository_id)
-    return PersistentRepository(**dataclasses.asdict(row))
+    return PersistentRepository(
+        id=row['id'],
+        path=Path(row['path']),
+        type=row['type']
+    )
 
 
 def deserialize_object_row(row: sqlite3.Row) -> PersistentObject:

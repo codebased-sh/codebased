@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import sqlite3
 import typing as T
 from datetime import datetime
 from pathlib import Path
@@ -16,10 +17,10 @@ from codebased.embeddings import create_openai_embeddings_sync_batched, create_e
 from codebased.exceptions import NotFoundException, AlreadyExistsException
 from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
-    Embedding, PersistentFileRevision, EmbeddingRequest
+    Embedding, PersistentFileRevision, EmbeddingRequest, SearchResult
 from codebased.parser import parse_objects, render_object
 from codebased.storage import persist_file_revision, persist_object, fetch_objects, fetch_embedding, DatabaseMigrations, \
-    persist_repository, fetch_embedding_for_hash, fetch_object_handle
+    persist_repository, fetch_embedding_for_hash, fetch_object_handle, persist_embedding
 
 
 def cli():
@@ -35,16 +36,42 @@ def cli():
     main(args.root)
 
 
+commits, rollbacks, begins = 0, 0, 0
+
+
+def rollback(db: sqlite3.Connection):
+    global begins, commits, rollbacks
+    rollbacks += 1
+    print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
+    db.execute("rollback;")
+
+
+def commit(db: sqlite3.Connection):
+    global begins, commits, rollbacks
+    commits += 1
+    print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
+    db.execute("commit;")
+
+
+def begin(db: sqlite3.Connection):
+    global begins, commits, rollbacks
+    begins += 1
+    print(f"Begins: {begins}, Commits: {commits}, Rollbacks: {rollbacks}")
+    db.execute("begin;")
+
+
 class Main:
     def __init__(self, context: Context):
         self.context = context
 
     def gather_repositories(self, root: Path) -> T.Iterable[PersistentRepository]:
-        for repo in find_git_repositories(root):
+        repositories = find_git_repositories(root)
+        for repo in repositories:
             repo_object = Repository(path=repo, type='git')
             db = self.context.db
+            begin(db)
             persistent_repository = persist_repository(db, repo_object)
-            db.commit()
+            commit(db)
             yield persistent_repository
 
     def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
@@ -63,7 +90,7 @@ class Main:
                     last_modified=last_modified
                 )
                 try:
-                    self.context.db.execute("begin;")
+                    begin(self.context.db)
                     persistent_file_revision = persist_file_revision(self.context.db, file_revision)
                     file_revision_handle = FileRevisionHandle(repo, persistent_file_revision)
                     objects = parse_objects(persistent_file_revision)
@@ -72,9 +99,10 @@ class Main:
                         persistent_object = persist_object(self.context.db, obj)
                         object_handle = ObjectHandle(file_revision_handle, persistent_object)
                         tmp.append(object_handle)
-                    self.context.db.execute("commit;")
+                    commit(self.context.db)
                     yield from tmp
                 except AlreadyExistsException as e:
+                    rollback(self.context.db)
                     persistent_file_revision = PersistentFileRevision(
                         id=e.identifier,
                         repository_id=repo.id,
@@ -92,7 +120,6 @@ class Main:
                             file_revision=file_revision_handle,
                             object=obj
                         )
-                    self.context.db.execute("rollback;")
 
     def gather_embeddings(self, root_path: Path) -> T.Iterable[Embedding]:
         q: T.List[EmbeddingRequest] = []
@@ -105,12 +132,20 @@ class Main:
 
         context = self.context
         client = context.openai_client
-        context1 = self.context
-        encoding = context1.embedding_model_encoding
+        encoding = self.context.embedding_model_encoding
 
         def drain() -> T.Iterable[Embedding]:
             nonlocal q, client
-            yield from create_openai_embeddings_sync_batched(client, q, self.context.config.embeddings)
+            embeddings = create_openai_embeddings_sync_batched(client, q, self.context.config.embeddings)
+            begin(context.db)
+            try:
+                for e in embeddings:
+                    pe = persist_embedding(self.context.db, e)
+                    yield pe
+                commit(context.db)
+            except Exception:
+                rollback(context.db)
+                raise
             q.clear()
 
         for obj in self.gather_objects(root_path):
@@ -149,7 +184,7 @@ class Main:
         index_id_mapping.add_with_ids(big_vec, ids)
         return index_id_mapping
 
-    def perform_search(self, query: str, faiss_index: faiss.Index) -> list[ObjectHandle]:
+    def perform_search(self, query: str, faiss_index: faiss.Index) -> list[SearchResult]:
         embedding = create_ephemeral_embedding(
             self.context.openai_client,
             query,
@@ -158,12 +193,15 @@ class Main:
         distances_s, ids_s = faiss_index.search(np.array([embedding]), k=5)
         distances, object_ids = distances_s[0], ids_s[0]
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
-        return handles
+        results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]
+        return results
 
 
-def display_results(results: list[ObjectHandle]) -> None:
+def display_results(results: list[SearchResult]) -> None:
     for result in results:
-        print(f"{result.file_revision.path}:{result.object.coordinates[0][0]} {result.object.name}")
+        obj = result.object_handle
+        score = result.score
+        print(f"{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name} = {score}")
 
 
 def main(root: Path):
