@@ -4,6 +4,7 @@ import dataclasses
 import typing as T
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 
 @dataclasses.dataclass
@@ -95,3 +96,6 @@ Coordinates = T.Tuple[T.Tuple[int, int], T.Tuple[int, int]]
 class SearchResult:
     object_handle: ObjectHandle
     score: float
+
+
+EDITOR = Literal["vi", "idea", "code"]

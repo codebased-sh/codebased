@@ -9,12 +9,13 @@ import textwrap
 from functools import cached_property
 from pathlib import Path
 
+from codebased.models import EDITOR
 import tiktoken
 import toml
 from openai import OpenAI
 from tiktoken import Encoding
 
-from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS
+from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS, DEFAULT_EDITOR
 from codebased.exceptions import NoApplicationDirectoryException
 
 # logging.basicConfig(level=logging.INFO)
@@ -66,6 +67,7 @@ class Config:
     These are defaults etc. that are used across various commands.
     """
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
+    editor: EDITOR = DEFAULT_EDITOR
 
     @classmethod
     def load_file(cls, path: Path):
@@ -85,7 +87,8 @@ class Config:
             embeddings=EmbeddingsConfig(
                 model=embedding_model,
                 dimensions=dimensions
-            )
+            ),
+            editor=cls.prompt_default_editor()
         )
 
     @classmethod
@@ -102,6 +105,10 @@ class Config:
     def save(self, path: Path):
         with open(path, 'w') as f:
             toml.dump(dataclasses.asdict(self), f)
+
+    @classmethod
+    def prompt_default_editor(cls):
+        return input(f"What editor do you want to use? (vi|idea|code) [{DEFAULT_EDITOR}]: ") or DEFAULT_EDITOR
 
 
 @dataclasses.dataclass

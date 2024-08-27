@@ -10,6 +10,7 @@ import threading
 import faiss
 
 from codebased.app import App, get_app
+from codebased.editor import open_editor
 from codebased.models import SearchResult
 from codebased.parser import render_object
 
@@ -29,7 +30,7 @@ class SharedState:
     needs_refresh: bool = True
 
 
-def interactive_loop(stdscr, app: App, faiss_index: faiss.Index) -> SearchResult | None:
+def interactive_loop(stdscr, app: App, faiss_index: faiss.Index):
     curses.curs_set(0)
     stdscr.nodelay(1)
 
@@ -59,8 +60,16 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index) -> SearchResult
         with state_lock:
             if key == ord('\n'):  # Enter key
                 if shared_state.results:
-                    return shared_state.results[shared_state.active_index]
-                break
+                    selected_result = shared_state.results[shared_state.active_index]
+                    start_coord = selected_result.object_handle.object.coordinates[0]
+                    open_editor(
+                        editor=app.context.config.editor,
+                        file=selected_result.object_handle.file_revision.path,
+                        row=start_coord[0] + 1,
+                        column=start_coord[1] + 1
+                    )
+                    shared_state.needs_refresh = True
+                continue
             elif key == 27:  # Escape key
                 break
             elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
@@ -77,6 +86,7 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index) -> SearchResult
                 shared_state.scroll_position += 10
             elif key != -1:
                 shared_state.query += chr(key)
+                shared_state.query = shared_state.query.replace('ƚ', '')
             else:
                 continue  # Skip refresh if no key was pressed
 
@@ -97,7 +107,7 @@ def display_interactive_results(stdscr, results: list[SearchResult], start_line:
             break
         obj = result.object_handle
         score = result.score
-        result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name} = {score}"
+        result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}"
         stdscr.addstr(start_line + i, 0, result_str[:width - 1])
 
     # Display detailed information for the active result

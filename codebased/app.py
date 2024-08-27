@@ -179,7 +179,7 @@ class App:
             query,
             self.context.config.embeddings
         )
-        distances_s, ids_s = faiss_index.search(np.array([embedding]), k=5)
+        distances_s, ids_s = faiss_index.search(np.array([embedding]), k=10)
         distances, object_ids = distances_s[0], ids_s[0]
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
         results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]
