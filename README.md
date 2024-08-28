@@ -51,7 +51,20 @@ The first index will take O(seconds) to build for medium-sized (>10k lines) code
 codebases (>100k lines),
 but the index is cached for future runs.
 
-Once the index is ready, you'll see a window open up with a search bar.
+Once the index is ready, you'll see a window open up with a search bar:
+
+![Empty Search Bar](https://github.com/codebased-sh/codebased/blob/5c3f4845d54a392503bf0f0f5c9af1b1cd471ed2/assets/empty_search.png?raw=true)
+
+Once you start typing, you'll see a list of results appear:
+
+![Search Bar with Results](https://github.com/codebased-sh/codebased/blob/5c3f4845d54a392503bf0f0f5c9af1b1cd471ed2/assets/search.png?raw=true)
+
+- You can navigate them using the up/down arrow keys.
+- A preview of the code for the selected result will be shown.
+- You can press enter to open the selected result in your favorite editor. This really works. And it's awesome.
+- Press Ctrl+C to exit.
+
+![Open Editor](https://github.com/codebased-sh/codebased/blob/5c3f4845d54a392503bf0f0f5c9af1b1cd471ed2/assets/editor.png?raw=true)
 
 ### Non-interactive mode
 
