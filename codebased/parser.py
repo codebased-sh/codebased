@@ -312,9 +312,12 @@ TSX_IMPL = LanguageImpl.from_language(
     ],
     name='tsx'
 )
+
+# This is fucked but if we don't keep this at the top level it will get garbage collected and the code will crash.
+TSP_LANGUAGE = tree_sitter_python.language()
 PYTHON_IMPL = LanguageImpl.from_language(
     # Don't make breaking changes on me dawg.
-    tree_sitter.Language(get_capsule_pointer(tree_sitter_python.language())),
+    tree_sitter.Language(get_capsule_pointer(TSP_LANGUAGE)),
     tags="""
         (module (expression_statement (assignment left: (identifier) @name) @definition.constant))
         
