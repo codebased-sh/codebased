@@ -48,6 +48,10 @@ class Secrets:
             openai_api_key = getpass.getpass("What is your OpenAI API key? ")
         return cls(OPENAI_API_KEY=openai_api_key)
 
+    def save(self, secrets_file: Path):
+        with open(secrets_file, 'w') as f:
+            toml.dump(dataclasses.asdict(self), f)
+
 
 @dataclasses.dataclass
 class EmbeddingsConfig:
@@ -140,6 +144,7 @@ class Settings:
         self.config_file.touch()
         Config.from_prompt().save(self.config_file)
         self.secrets_file.touch()
+        Secrets.from_prompt().save(self.secrets_file)
         self.database_file.touch()
         self.indexes_directory.mkdir(parents=True, exist_ok=True)
 
