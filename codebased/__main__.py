@@ -53,6 +53,8 @@ def interactive_main(root: Path, n: int):
     try:
         atexit.register(restore_terminal)
         curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
+    except KeyboardInterrupt:
+        pass
     finally:
         STATS.import_cache_info(
             "codebased.get_file_bytes.lru_cache_hit_rate",

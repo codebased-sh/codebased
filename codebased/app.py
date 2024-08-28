@@ -178,7 +178,7 @@ class App:
                     yield embedding_for_object
                     # yield persist_embedding(self.context.db, embedding_for_object)
                 except NotFoundException:
-                    token_count = len(encoding.encode(text))
+                    token_count = len(encoding.encode(text, disallowed_special=()))
                     request = EmbeddingRequest(
                         object_id=obj.object.id,
                         content=text,

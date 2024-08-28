@@ -267,10 +267,6 @@ _JAVASCRIPT_TAG_QUERY = """
     name: (identifier) @name
     value: [(arrow_function) (function_expression)]) @definition.function
 
-(variable_declarator 
-    name: (identifier) @name
-    value: [(arrow_function) (function_expression)]) @definition.function
-
 (assignment_expression
   left: [
     (identifier) @name
@@ -311,7 +307,7 @@ TSX_IMPL = LanguageImpl.from_language(
     tree_sitter.Language(tree_sitter_typescript.language_tsx()),
     tags=_TYPESCRIPT_TAG_QUERY,
     file_types=[
-        'ts',
+        'tsx',
     ],
     name='tsx'
 )
