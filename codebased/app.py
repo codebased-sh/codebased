@@ -207,6 +207,8 @@ class App:
 
     @lru_cache
     def perform_search(self, query: str, faiss_index: faiss.Index, *, n: int = 10) -> list[SearchResult]:
+        if not query:
+            return []
         embedding = create_ephemeral_embedding(
             self.context.openai_client,
             query,

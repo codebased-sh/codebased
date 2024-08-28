@@ -102,7 +102,10 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, n: int):
             with state_lock:
                 height, width = stdscr.getmaxyx()
                 stdscr.clear()
-                stdscr.addstr(0, 0, f"Search: {shared_state.query}")
+                if shared_state.query:
+                    stdscr.addstr(0, 0, f"Search: {shared_state.query}")
+                else:
+                    stdscr.addstr(0, 0, "Search: Try typing something...")
                 display_interactive_results(stdscr, shared_state.results, 2, height - 2,
                                             shared_state.active_index, shared_state.scroll_position)
                 stdscr.refresh()
