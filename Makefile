@@ -23,3 +23,10 @@ package-publish: package-build
 
 reset:
 	rm -rf ~/.codebased
+
+manual-test:
+	codebased
+	codebased -n 1 "Curses TermUI"
+	codebased --root ../codebased
+	codebased --root codebased/
+	codebased --root ~/dev/oss/ripgrep

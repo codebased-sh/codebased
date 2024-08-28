@@ -84,8 +84,9 @@ class App:
                 file_revision_abs_path = repo.path / path
                 content = get_file_bytes(file_revision_abs_path)
                 content_hash = hashlib.sha1(content).hexdigest()
-                size = path.stat().st_size
-                last_modified = datetime.fromtimestamp(path.stat().st_mtime)
+                stat_result = file_revision_abs_path.stat()
+                size = stat_result.st_size
+                last_modified = datetime.fromtimestamp(stat_result.st_mtime)
                 file_revision = FileRevision(
                     repository_id=repo.id,
                     path=path,
@@ -98,7 +99,8 @@ class App:
                     persistent_file_revision = persist_file_revision(self.context.db, file_revision)
                     file_revision_handle = FileRevisionHandle(repo, persistent_file_revision)
                     logger.debug(
-                        f"Indexing new file revision for {file_revision_abs_path} w/ id {persistent_file_revision.id}")
+                        f"Indexing new file revision for {file_revision_abs_path} w/ id {persistent_file_revision.id}"
+                    )
                     objects = parse_objects(persistent_file_revision)
                     tmp = []
                     for obj in objects:
