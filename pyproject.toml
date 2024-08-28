@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "codebased"
-version = "0.1.0"
-description = "Whatever it takes to make software development fast and painless."
+version = "0.1.2"
+description = "AI-powerd code search for the terminal."
 authors = ["Max Conradt <mhconradt@protonmail.com>"]
 readme = "README.md"
 repository = "https://github.com/codebased-sh/codebased"
