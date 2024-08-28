@@ -92,7 +92,7 @@ class Config:
 
     @classmethod
     def prompt_default_dimensions(cls) -> int:
-        text = input("What dimensions do you want to use for embeddings? [1536]: ")
+        text = input(f"What dimensions do you want to use for embeddings? [{DEFAULT_MODEL_DIMENSIONS}]: ")
         dimensions = int(text) if text else DEFAULT_MODEL_DIMENSIONS
         return dimensions
 

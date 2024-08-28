@@ -285,13 +285,13 @@ trio = ["trio (>=0.22.0,<0.26.0)"]
 
 [[package]]
 name = "httpx"
-version = "0.27.0"
+version = "0.27.2"
 description = "The next generation HTTP client."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:71d5465162c13681bff01ad59b2cc68dd838ea1f10e51574bac27103f00c91a5"},
-    {file = "httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5"},
+    {file = "httpx-0.27.2-py3-none-any.whl", hash = "sha256:7bb2708e112d8fdd7829cd4243970f0c223274051cb35ee80c03301ee29a3df0"},
+    {file = "httpx-0.27.2.tar.gz", hash = "sha256:f7c2be1d2f3c3c3160d441802406b206c2b76f5947b11115e6df10c6c65e66c2"},
 ]
 
 [package.dependencies]
@@ -306,6 +306,7 @@ brotli = ["brotli", "brotlicffi"]
 cli = ["click (==8.*)", "pygments (==2.*)", "rich (>=10,<14)"]
 http2 = ["h2 (>=3,<5)"]
 socks = ["socksio (==1.*)"]
+zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "idna"
@@ -850,19 +851,23 @@ use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
 name = "setuptools"
-version = "73.0.1"
+version = "74.0.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "setuptools-73.0.1-py3-none-any.whl", hash = "sha256:b208925fcb9f7af924ed2dc04708ea89791e24bde0d3020b27df0e116088b34e"},
-    {file = "setuptools-73.0.1.tar.gz", hash = "sha256:d59a3e788ab7e012ab2c4baed1b376da6366883ee20d7a5fc426816e3d7b1193"},
+    {file = "setuptools-74.0.0-py3-none-any.whl", hash = "sha256:0274581a0037b638b9fc1c6883cc71c0210865aaa76073f7882376b641b84e8f"},
+    {file = "setuptools-74.0.0.tar.gz", hash = "sha256:a85e96b8be2b906f3e3e789adec6a9323abf79758ecfa3065bd740d81158b11e"},
 ]
 
 [package.extras]
+check = ["pytest-checkdocs (>=2.4)", "pytest-ruff (>=0.2.1)", "ruff (>=0.5.2)"]
 core = ["importlib-metadata (>=6)", "importlib-resources (>=5.10.2)", "jaraco.text (>=3.7)", "more-itertools (>=8.8)", "packaging (>=24)", "platformdirs (>=2.6.2)", "tomli (>=2.0.1)", "wheel (>=0.43.0)"]
+cover = ["pytest-cov"]
 doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "pygments-github-lexers (==0.0.5)", "pyproject-hooks (!=1.1)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-favicon", "sphinx-inline-tabs", "sphinx-lint", "sphinx-notfound-page (>=1,<2)", "sphinx-reredirects", "sphinxcontrib-towncrier", "towncrier (<24.7)"]
-test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "importlib-metadata", "ini2toml[lite] (>=0.14)", "jaraco.develop (>=7.21)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "jaraco.test", "mypy (==1.11.*)", "packaging (>=23.2)", "pip (>=19.1)", "pyproject-hooks (!=1.1)", "pytest (>=6,!=8.1.*)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-home (>=0.5)", "pytest-mypy", "pytest-perf", "pytest-ruff (<0.4)", "pytest-ruff (>=0.2.1)", "pytest-ruff (>=0.3.2)", "pytest-subprocess", "pytest-timeout", "pytest-xdist (>=3)", "tomli", "tomli-w (>=1.0.0)", "virtualenv (>=13.0.0)", "wheel (>=0.44.0)"]
+enabler = ["pytest-enabler (>=2.2)"]
+test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "ini2toml[lite] (>=0.14)", "jaraco.develop (>=7.21)", "jaraco.envs (>=2.2)", "jaraco.path (>=3.2.0)", "jaraco.test", "packaging (>=23.2)", "pip (>=19.1)", "pyproject-hooks (!=1.1)", "pytest (>=6,!=8.1.*)", "pytest-home (>=0.5)", "pytest-perf", "pytest-subprocess", "pytest-timeout", "pytest-xdist (>=3)", "tomli-w (>=1.0.0)", "virtualenv (>=13.0.0)", "wheel (>=0.44.0)"]
+type = ["importlib-metadata (>=7.0.2)", "jaraco.develop (>=7.21)", "mypy (==1.11.*)", "pytest-mypy"]
 
 [[package]]
 name = "sniffio"
@@ -1154,21 +1159,22 @@ core = ["tree-sitter (>=0.21,<1.0)"]
 
 [[package]]
 name = "tree-sitter-python"
-version = "0.21.0"
+version = "0.23.0"
 description = "Python grammar for tree-sitter"
 optional = false
 python-versions = ">=3.8"
-files = []
-develop = false
+files = [
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-macosx_10_9_x86_64.whl", hash = "sha256:467eb1c7670ac6684b84d3ab1478cfb8e5410e986dc71895cc03c10800b1c741"},
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:0e9c676c888563dbeec862020926b49fa7f4b0f374b9b00cc59f63764397b8b6"},
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:33b9f6afd28956c56a95a3d68dd435330277c3bcef881d7aa4686683589c4641"},
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:830f58540d4e313bc5843975b5f3f4765cc7b89c6eb0755bd2f33e92f1087c08"},
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:5b931613edd1b0bd6eb0dcf34635afbfe20e2c25502c90bf7b05690a41388e37"},
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:4577f7ebda4320934c794fbf90e2363247ee086fca4c27d545c88b3cc97d618d"},
+    {file = "tree_sitter_python-0.23.0-cp38-abi3-win_amd64.whl", hash = "sha256:df5ea30c85805c69a5b9db0e0da557a4e4b1b5b9e3f15df7eb1356d4f2636e23"},
+]
 
 [package.extras]
 core = ["tree-sitter (>=0.21,<1.0)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/tree-sitter/tree-sitter-python.git"
-reference = "v0.21.0"
-resolved_reference = "0f9047c857ed0990931b1f899c7d3bf403703147"
 
 [[package]]
 name = "tree-sitter-ruby"
@@ -1271,4 +1277,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "aa66866cac1096a3df71026f2da30de6f9cec202dbfbadbb070225e849a61fe0"
+content-hash = "dd36e3323eb1a6767094624edb4a275fde07b23e897953986c69f56e6a2c3031"

@@ -15,6 +15,7 @@ import tree_sitter_typescript
 
 from codebased.filesystem import get_file_bytes, get_file_lines
 from codebased.models import PersistentFileRevision, Object, Coordinates, ObjectHandle
+from codebased.segfault import get_capsule_pointer
 
 
 class LanguageImpl:
@@ -311,8 +312,9 @@ TSX_IMPL = LanguageImpl.from_language(
     ],
     name='tsx'
 )
-PY_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_python.language()),
+PYTHON_IMPL = LanguageImpl.from_language(
+    # Don't make breaking changes on me dawg.
+    tree_sitter.Language(get_capsule_pointer(tree_sitter_python.language())),
     tags="""
         (module (expression_statement (assignment left: (identifier) @name) @definition.constant))
         
@@ -473,7 +475,7 @@ JAVASCRIPT_IMPL = LanguageImpl.from_language(
     name='javascript'
 )
 LANGUAGES = [
-    PY_IMPL,
+    PYTHON_IMPL,
     RUST_IMPL,
     CPP_IMPL,
     C_IMPL,

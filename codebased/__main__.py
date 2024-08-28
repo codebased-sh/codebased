@@ -225,7 +225,9 @@ def cli():
         help="Number of results to display (default: 10)",
     )
     args = parser.parse_args()
-    if args.i:
+    interactive = args.i or args.query is None
+    logger.debug(f"Started w/ args: {args}")
+    if interactive:
         interactive_main(args.root, args.n)
     else:
         noninteractive_main(args.root, args.query, args.n)
