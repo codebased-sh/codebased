@@ -53,7 +53,7 @@ class Secrets:
             toml.dump(dataclasses.asdict(self), f)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class EmbeddingsConfig:
     model: str = DEFAULT_MODEL
     dimensions: int = DEFAULT_MODEL_DIMENSIONS
