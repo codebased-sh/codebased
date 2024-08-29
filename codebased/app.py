@@ -68,7 +68,6 @@ class App:
     def _index_worker(self, path: Path) -> T.NoReturn:
         while True:
             try:
-                logger.debug(f"Index worker {path}")
                 STATS.increment("codebased.index.worker.events.total")
                 # Wait for an event
                 start = time.perf_counter()
@@ -108,7 +107,6 @@ class App:
 
     def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
         for repo in tqdm.tqdm(list(self.gather_repositories(root)), file=sys.stderr, disable=self._index is not None):
-            logger.debug(f"Indexing {repo.path} with id {repo.id}")
             for path in tqdm.tqdm(
                     get_git_files(repo.path),
                     leave=False,
@@ -133,15 +131,11 @@ class App:
                     begin(self.context.db)
                     persistent_file_revision = persist_file_revision(self.context.db, file_revision)
                     file_revision_handle = FileRevisionHandle(repo, persistent_file_revision)
-                    logger.debug(
-                        f"Indexing new file revision for {file_revision_abs_path} w/ id {persistent_file_revision.id}"
-                    )
                     objects = parse_objects(file_revision_handle)
                     tmp = []
                     for obj in objects:
                         persistent_object = persist_object(self.context.db, obj)
                         object_handle = ObjectHandle(file_revision_handle, persistent_object)
-                        logger.debug(f"Indexing new object {obj.name} w/ id {persistent_object.id}")
                         tmp.append(object_handle)
                     commit(self.context.db)
                     yield from tmp
@@ -159,9 +153,7 @@ class App:
                         repository=repo,
                         file_revision=persistent_file_revision
                     )
-                    logger.debug(f"Fetching objects for {file_revision_abs_path} w/ id {persistent_file_revision.id}")
                     for obj in fetch_objects(self.context.db, file_revision):
-                        logger.debug(f"Fetched object {obj.name} w/ id {obj.id}")
                         yield ObjectHandle(
                             file_revision=file_revision_handle,
                             object=obj
@@ -271,8 +263,6 @@ class App:
         distances, object_ids = distances_s[0], ids_s[0]
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
         results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]
-        for result in results:
-            logger.debug(f"Result: {result}")
         return results
 
 

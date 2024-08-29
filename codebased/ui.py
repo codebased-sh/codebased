@@ -102,7 +102,6 @@ class InteractiveSearch:
                 # This will make sure the screen updates when the index changes.
                 with self.app.index_updated_condition:
                     self.app.index_updated_condition.wait()
-                logger.debug("Index updated, scheduling search task")
                 self.submit_search_task()
         except Exception as e:
             logger.exception(f"Error in index coordinator: {e}")

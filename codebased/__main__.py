@@ -21,7 +21,9 @@ try:
     os.mkdir(LOG_FILE.parent)
 except FileExistsError:
     pass
-logging.basicConfig(level=logging.DEBUG, filename=LOG_FILE)
+# Clear the log file
+LOG_FILE.write_text("")
+logging.basicConfig(level=logging.INFO, filename=LOG_FILE)
 
 
 def cli():
@@ -119,7 +121,6 @@ def cli():
     )
     args = parser.parse_args()
     interactive = args.i or args.query is None
-    logger.debug(f"Started w/ args: {args}")
     root = args.root.resolve()
     flags = Flags(n=args.n, interactive=interactive, query=args.query, root=root, background=not args.no_background)
     if interactive:
@@ -141,7 +142,7 @@ def noninteractive_main(flags: Flags):
         for result in results:
             print_search_result(result)
     finally:
-        logger.debug(STATS.dumps())
+        logger.info(STATS.dumps())
 
 
 def interactive_main(flags: Flags):
@@ -160,4 +161,4 @@ def interactive_main(flags: Flags):
             "codebased.perform_search.lru_cache_hit_rate",
             App.perform_search.cache_info(),
         )
-        logger.debug(STATS.dumps())
+        logger.info(STATS.dumps())
