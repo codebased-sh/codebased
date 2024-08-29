@@ -10,6 +10,10 @@
 
 ## Changelog:
 
+### 0.1.15
+
+- [X] Reduce logging verbosity / disk usage
+
 ### 0.1.14
 
 - [X] Fix crash in worker
