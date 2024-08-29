@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import dataclasses
 import getpass
 import logging
@@ -30,6 +31,12 @@ class Secrets:
     def __post_init__(self):
         if not self.OPENAI_API_KEY:
             raise ValueError("Codebased requires an OpenAI API key for now. Ask Max if you'd like one to test with.")
+
+    @classmethod
+    def magic(cls):
+        # Hardcode API key, but it has fairly aggressive rate limits and limits on the models used as well.
+        bb = b'YzJzdGNISnZhaTB6ZW5CNllrbGxXRlZ6WjJVNFdGTm5iRko0UkZWYVRrOVJZMkpWUVVkMmMzVnVTWE5oTWtocVdtcDNRMUI1TW1sTmRWOVFWakZMTXpsbFJFcDRhR3haZFU1algydENRWFZVZUZRelFteGlhMFpLZURnek9FUXRaMEU0WldWTGNIZzVlREl4WlZCMU5tdEZNVW96U1hSM2NEbExTbEEyWkZKMWJIVlNTMXBVUm0xc05HZFpiVFZoUmt4bmIycFJTV0pzZDFwMFNubHhjRWxmV1VFPQ=='
+        return cls(OPENAI_API_KEY=base64.b64decode(base64.b64decode(bb)).decode('utf-8'))
 
     @classmethod
     def load_file(cls, path: Path):
@@ -144,7 +151,8 @@ class Settings:
         self.config_file.touch()
         Config.from_prompt().save(self.config_file)
         self.secrets_file.touch()
-        Secrets.from_prompt().save(self.secrets_file)
+        Secrets.magic().save(self.secrets_file)
+        # Secrets.from_prompt().save(self.secrets_file)
         self.database_file.touch()
         self.indexes_directory.mkdir(parents=True, exist_ok=True)
 
@@ -192,4 +200,3 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 def greet():
     with open(PACKAGE_DIR / "GREETING.txt") as f:
         print(f.read())
-
