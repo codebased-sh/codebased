@@ -170,6 +170,7 @@ class InteractiveSearch:
             return False
         elif key in (curses.KEY_BACKSPACE, 127):
             self.shared_state.query = self.shared_state.query[:-1]
+            self.shared_state.active_index = 0
         elif key == curses.KEY_UP:
             self.shared_state.active_index = max(0, self.shared_state.active_index - 1)
             self.shared_state.scroll_position = 0
@@ -183,6 +184,7 @@ class InteractiveSearch:
         elif key != -1:
             self.shared_state.query += chr(key)
             self.shared_state.query = self.shared_state.query.replace('ƚ', '')
+            self.shared_state.active_index = 0
         else:
             return True
 
