@@ -45,15 +45,15 @@ class SharedState:
     current_search_id: int = 0
 
 
-def perform_search(search_id, app, faiss_index, query, shared_state, state_lock, n):
+def perform_search(search_id, app, query, shared_state, state_lock, n):
     try:
-        results = app.perform_search(query, faiss_index, n=n)
+        results = app.perform_search(query, n=n)
         with state_lock:
             shared_state.results = results
             shared_state.latest_completed_search_id = search_id
             shared_state.needs_refresh = True
     except Exception as e:
-        print(f"Error in search: {e}")
+        logger.exception(f"Error in search: {e}")
         raise
 
 
@@ -122,11 +122,10 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, flags: Flags):
                 perform_search,
                 shared_state.current_search_id,
                 app,
-                faiss_index,
                 shared_state.query,
                 shared_state,
                 state_lock,
-                n=(flags.n)
+                n=flags.n
             )
 
             if shared_state.latest_completed_search_id > shared_state.current_search_id:

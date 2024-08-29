@@ -207,3 +207,4 @@ class Flags:
     interactive: bool = False
     query: str = None
     root: Path = Path.cwd()
+    background: bool = False

@@ -113,11 +113,16 @@ def cli():
         default=10,
         help="Number of results to display (default: 10)",
     )
+    parser.add_argument(
+        "--no-background",
+        action='store_true',
+        help="Don't run the background indexing worker.",
+    )
     args = parser.parse_args()
     interactive = args.i or args.query is None
     logger.debug(f"Started w/ args: {args}")
     root = args.root.resolve()
-    flags = Flags(n=args.n, interactive=interactive, query=args.query, root=root)
+    flags = Flags(n=args.n, interactive=interactive, query=args.query, root=root, background=not args.no_background)
     if interactive:
         interactive_main(flags)
     else:
@@ -131,9 +136,9 @@ def display_results(results: list[SearchResult]) -> None:
 
 def noninteractive_main(flags: Flags):
     app = get_app()
-    faiss_index = app.create_index(flags.root)
+    app.create_index(flags.root, background=False)
     try:
-        results = app.perform_search(flags.query, faiss_index, n=flags.n)
+        results = app.perform_search(flags.query, n=flags.n)
         for result in results:
             print_search_result(result)
     finally:
@@ -145,7 +150,7 @@ def interactive_main(flags: Flags):
         with STATS.timer("codebased.startup.app.duration"):
             app = get_app()
         with STATS.timer("codebased.startup.index.duration"):
-            faiss_index = app.create_index(flags.root)
+            faiss_index = app.create_index(flags.root, background=flags.background)
     try:
         atexit.register(restore_terminal)
         curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, flags))

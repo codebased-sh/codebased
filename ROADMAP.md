@@ -10,7 +10,7 @@
 
 ### 0.1.12
 
-- [ ] Re-index when files change
+- [X] Re-index when files change
 
 ### 0.1.11
 

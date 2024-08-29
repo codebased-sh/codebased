@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import queue
 import sqlite3
 import sys
+import threading
+import time
 import typing as T
 from datetime import datetime
 from functools import lru_cache
@@ -17,7 +20,8 @@ from codebased.constants import EMBEDDING_MODEL_CONTEXT_LENGTH
 from codebased.core import Context, Settings, PACKAGE_DIR
 from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.exceptions import AlreadyExistsException, NotFoundException
-from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes
+from codebased.filesystem import find_git_repositories, get_git_files, get_file_bytes, EventWrapper, \
+    get_filesystem_events_queue
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
     PersistentFileRevision, Embedding, EmbeddingRequest, SearchResult
 from codebased.parser import parse_objects, render_object
@@ -51,15 +55,36 @@ def begin(db: sqlite3.Connection):
 class App:
     def __init__(self, context: Context):
         self.context = context
-        self.setup_logging()
+        # Could do RWLock but doesn't exist in Python standard library.
+        self._lock = threading.Lock()
+        self._events: queue.Queue[EventWrapper] = queue.Queue()
+        self._index: faiss.Index | None = None
 
-    def setup_logging(self):
-        log_file = self.context.application_directory / "codebased.log"
-        logging.basicConfig(
-            filename=str(log_file),
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
+    def _index_worker(self, path: Path):
+        while True:
+            try:
+                logger.debug(f"Index worker {path}")
+                STATS.increment("codebased.index.worker.events.total")
+                # Wait for an event
+                start = time.perf_counter()
+                self._events.get(block=True)
+                # Wait at most 5 seconds for more events, waiting at most one second between each event.
+                while time.perf_counter() - start < 5.0:
+                    try:
+                        # Debounce events
+                        self._events.get(timeout=1.0)
+                    except queue.Empty:
+                        break
+                else:
+                    # Drain any remaining events
+                    while not self._events.empty():
+                        self._events.get_nowait()
+                index = self._create_index(path)
+                with self._lock:
+                    with STATS.timer("codebased.index.worker.duration"):
+                        self._index = index
+            except Exception as e:
+                logger.exception(f"Exception in index worker: {e} (ignored)")
 
     def gather_repositories(self, root: Path) -> T.Iterable[PersistentRepository]:
         repositories = find_git_repositories(root)
@@ -73,13 +98,14 @@ class App:
             yield persistent_repository
 
     def gather_objects(self, root: Path) -> T.Iterable[ObjectHandle]:
-        for repo in tqdm.tqdm(list(self.gather_repositories(root)), file=sys.stderr):
+        for repo in tqdm.tqdm(list(self.gather_repositories(root)), file=sys.stderr, disable=self._index is not None):
             logger.debug(f"Indexing {repo.path} with id {repo.id}")
             for path in tqdm.tqdm(
                     get_git_files(repo.path),
                     leave=False,
                     desc=f"Indexing {repo.path.name}",
-                    file=sys.stderr
+                    file=sys.stderr,
+                    disable=self._index is not None
             ):
                 file_revision_abs_path = repo.path / path
                 content = get_file_bytes(file_revision_abs_path)
@@ -194,7 +220,7 @@ class App:
         else:
             yield from drain()
 
-    def create_index(self, root: Path) -> faiss.Index:
+    def _create_index(self, root: Path) -> faiss.Index:
         index_l2 = faiss.IndexFlatL2(self.context.config.embeddings.dimensions)
         index_id_mapping = faiss.IndexIDMap2(index_l2)
         all_embeddings = list(self.gather_embeddings(root))
@@ -207,8 +233,24 @@ class App:
             index_id_mapping.add_with_ids(big_vec, ids)
         return index_id_mapping
 
+    def create_index(self, root: Path, background: bool = False):
+        self._events = get_filesystem_events_queue(root)
+        index = self._create_index(root)
+        with self._lock:
+            self._index = index
+        if background:
+            thread = threading.Thread(target=self._index_worker, args=(root,), daemon=True)
+            thread.start()
+
+    @property
+    def index(self) -> faiss.Index:
+        with self._lock:
+            if self._index is not None:
+                return self._index
+            raise RuntimeError("Index not ready.")
+
     @lru_cache
-    def perform_search(self, query: str, faiss_index: faiss.Index, *, n: int = 10) -> list[SearchResult]:
+    def perform_search(self, query: str, *, n: int = 10) -> list[SearchResult]:
         if not query:
             return []
         embedding = create_ephemeral_embedding(
@@ -216,7 +258,7 @@ class App:
             query,
             self.context.config.embeddings
         )
-        distances_s, ids_s = faiss_index.search(np.array([embedding]), k=n)
+        distances_s, ids_s = self.index.search(np.array([embedding]), k=n)
         distances, object_ids = distances_s[0], ids_s[0]
         handles = [fetch_object_handle(self.context.db, int(object_id)) for object_id in object_ids]
         results = [SearchResult(object_handle=h, score=s) for h, s in zip(handles, distances)]

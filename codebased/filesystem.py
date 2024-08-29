@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import dataclasses
 import os
+import queue
 import subprocess
+import time
 from functools import lru_cache
 from pathlib import Path
 
+import watchdog.events
+import watchdog.observers
 from codebased.stats import STATS
 
 
@@ -62,3 +67,28 @@ def get_file_bytes(path: Path) -> bytes:
 @lru_cache(1)
 def get_file_lines(path: Path) -> list[bytes]:
     return get_file_bytes(path).split(b'\n')
+
+
+_OBSERVER = watchdog.observers.Observer()
+
+
+@dataclasses.dataclass
+class EventWrapper:
+    event: watchdog.events.FileSystemEvent
+    time: float
+
+
+class QueueEventHandler(watchdog.events.FileSystemEventHandler):
+    def __init__(self, q: queue.Queue[EventWrapper]):
+        self.q = q
+
+    def on_any_event(self, event: watchdog.events.FileSystemEvent):
+        self.q.put(EventWrapper(event, time.time()))
+
+
+def get_filesystem_events_queue(root: Path) -> queue.Queue[EventWrapper]:
+    observer = _OBSERVER
+    q = queue.Queue()
+    observer.schedule(QueueEventHandler(q), root, recursive=True)
+    observer.start()
+    return q
