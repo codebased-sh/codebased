@@ -37,7 +37,7 @@ def cli():
         If you don't want to switch to a directory before running Codebased, pass `--root`.
         
         The first time you run codebased, it will ask you to do some configuration.
-        The defaults are very good, except for your OpenAI API key.
+        Where provided, the defaults are very good.
         
         Once you're set up.
         
