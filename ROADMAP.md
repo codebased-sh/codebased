@@ -10,6 +10,10 @@
 
 ## Changelog:
 
+### 0.1.14
+
+- [X] Fix crash in worker
+
 ### 0.1.13
 
 - [X] Refresh search screen with new results when index changes
