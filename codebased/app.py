@@ -101,7 +101,7 @@ class App:
                     logger.debug(
                         f"Indexing new file revision for {file_revision_abs_path} w/ id {persistent_file_revision.id}"
                     )
-                    objects = parse_objects(persistent_file_revision)
+                    objects = parse_objects(file_revision_handle)
                     tmp = []
                     for obj in objects:
                         persistent_object = persist_object(self.context.db, obj)

@@ -14,7 +14,7 @@ import tree_sitter_rust
 import tree_sitter_typescript
 
 from codebased.filesystem import get_file_bytes, get_file_lines
-from codebased.models import PersistentFileRevision, Object, Coordinates, ObjectHandle
+from codebased.models import PersistentFileRevision, Object, Coordinates, ObjectHandle, FileRevisionHandle
 from codebased.segfault import get_capsule_pointer
 
 
@@ -91,8 +91,8 @@ def get_context(node: tree_sitter.Node) -> tuple[list[int], list[int]]:
     return before, after
 
 
-def parse_objects(file_revision: PersistentFileRevision) -> list[Object]:
-    file = file_revision.path
+def parse_objects(file_revision_handle: FileRevisionHandle) -> list[Object]:
+    file = file_revision_handle.path
     file_type = file.suffix[1:]
     impl = None
     for language in LANGUAGES:
@@ -106,12 +106,12 @@ def parse_objects(file_revision: PersistentFileRevision) -> list[Object]:
     except UnicodeDecodeError:
         return []
     if impl is None:
-        default_objects = parse_objects_default(file_revision, text)
+        default_objects = parse_objects_default(file_revision_handle.file_revision, text)
         return default_objects
     tree = impl.parser.parse(text)
     root_node = tree.root_node
     root_chunk = Object(
-        file_revision_id=file_revision.id,
+        file_revision_id=file_revision_handle.file_revision.id,
         name=str(file),
         kind='file',
         language=impl.name,
@@ -128,7 +128,7 @@ def parse_objects(file_revision: PersistentFileRevision) -> list[Object]:
             before, after = get_context(definition_node)
             chunks.append(
                 Object(
-                    file_revision_id=file_revision.id,
+                    file_revision_id=file_revision_handle.file_revision.id,
                     name=name_node.text.decode('utf-8'),
                     kind=definition_kind,
                     language=impl.name,
