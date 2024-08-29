@@ -83,6 +83,9 @@ class App:
                 with self._lock:
                     with STATS.timer("codebased.index.worker.duration"):
                         self._index = index
+                        # lmao
+                        STATS.increment("codebased.perform_search.cache_clear")
+                        self.perform_search.cache_clear()
             except Exception as e:
                 logger.exception(f"Exception in index worker: {e} (ignored)")
 
