@@ -1,12 +1,12 @@
-create table if not exists repository
+create table repository
 (
-    id           integer primary key,
-    path         text,
-    type         text,
+    id   integer primary key,
+    path text,
+    type text,
     unique (path)
 );
 
-create table if not exists file_revision
+create table file_revision
 (
     id            integer primary key,
     repository_id integer,
@@ -18,24 +18,23 @@ create table if not exists file_revision
     unique (repository_id, path, hash)
 );
 
-create table if not exists object
+create table object
 (
-    id             integer primary key,
-    file_revision_id  integer,
-    name           text,
-    language       text,
-    context_before text,
-    context_after  text,
-    kind           text,
-    byte_range     text,
-    coordinates    text,
+    id               integer primary key,
+    file_revision_id integer,
+    name             text,
+    language         text,
+    context_before   text,
+    context_after    text,
+    kind             text,
+    byte_range       text,
+    coordinates      text,
     foreign key (file_revision_id) references file_revision (id)
 );
 
-create table if not exists embedding
+create table embedding
 (
-    id           integer primary key,
-    object_id    integer,
+    object_id           integer primary key,
     /* Struct packed F32 */
     embedding    blob,
     content_hash text,

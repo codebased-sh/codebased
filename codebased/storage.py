@@ -152,7 +152,6 @@ def fetch_embedding(db: sqlite3.Connection, object_id: int) -> Embedding:
         cursor = db.execute(
             """
             select
-                id,
                 object_id,
                 embedding,
                 content_hash
@@ -176,7 +175,6 @@ def fetch_embedding_for_hash(db: sqlite3.Connection, content_hash: str) -> Embed
         cursor = db.execute(
             """
             select
-                id,
                 object_id,
                 embedding,
                 content_hash
@@ -202,7 +200,6 @@ def persist_embedding(db: sqlite3.Connection, embedding: Embedding) -> Embedding
             INSERT INTO embedding
              (object_id, embedding, content_hash)
               VALUES (?, ?, ?)
-               RETURNING id
             """,
             (
                 embedding.object_id,
