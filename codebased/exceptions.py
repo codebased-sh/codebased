@@ -34,3 +34,9 @@ class AlreadyExistsException(CodebasedException):
     def __init__(self, identifier: int):
         self.identifier = identifier
         super().__init__(identifier)
+
+
+class BadFileException(CodebasedException):
+    def __init__(self, path: Path):
+        self.path = path
+        super().__init__(path)

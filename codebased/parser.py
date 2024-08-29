@@ -498,7 +498,8 @@ def render_object(
         *,
         context: bool = True,
         file: bool = True,
-        line_numbers: bool = False
+        line_numbers: bool = False,
+        ensure_hash: str | None = None
 ) -> str:
     file_revision = obj_handle.file_revision
     obj = obj_handle.object
@@ -506,7 +507,7 @@ def render_object(
     if file:
         out_lines.append(str(file_revision.path))
         out_lines.append('')
-    in_lines = get_file_lines(file_revision.path)
+    in_lines = get_file_lines(file_revision.path, ensure_hash=ensure_hash)
     max_line_no = max(
         obj.coordinates[0][0],
         obj.coordinates[1][0],

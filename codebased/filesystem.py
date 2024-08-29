@@ -10,7 +10,10 @@ from pathlib import Path
 
 import watchdog.events
 import watchdog.observers
+
+from codebased.exceptions import BadFileException
 from codebased.stats import STATS
+from codebased.utils import get_content_hash
 
 
 def get_git_files(path: Path) -> list[Path]:
@@ -56,17 +59,24 @@ def find_git_repositories(root: Path) -> list[Path]:
 # i.e. we have computing the SHA1 of the file revision, parsing the file, and creating the embeddings.
 # But we should stop memoizing stuff: https://www.youtube.com/watch?v=IroPQ150F6c.
 @lru_cache(1)
-def get_file_bytes(path: Path) -> bytes:
+def get_file_bytes(path: Path, *, ensure_hash: str | None = None) -> bytes:
     with STATS.timer("codebased.get_file_bytes.duration"):
-        with open(path, 'rb') as f:
-            _bytes = f.read()
-            STATS.increment("codebased.get_file_bytes.bytes_read", len(_bytes))
-            return _bytes
+        try:
+            with open(path, 'rb') as f:
+                _bytes = f.read()
+                STATS.increment("codebased.get_file_bytes.bytes_read", len(_bytes))
+                if ensure_hash is not None:
+                    content_hash = get_content_hash(_bytes)
+                    if content_hash != ensure_hash:
+                        raise BadFileException(path)
+                return _bytes
+        except FileNotFoundError:
+            raise BadFileException(path)
 
 
 @lru_cache(1)
-def get_file_lines(path: Path) -> list[bytes]:
-    return get_file_bytes(path).split(b'\n')
+def get_file_lines(path: Path, *, ensure_hash: str | None = None) -> list[bytes]:
+    return get_file_bytes(path, ensure_hash=ensure_hash).split(b'\n')
 
 
 _OBSERVER = watchdog.observers.Observer()

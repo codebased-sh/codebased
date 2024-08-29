@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import logging
 import queue
 import sqlite3
@@ -28,6 +27,7 @@ from codebased.parser import parse_objects, render_object
 from codebased.stats import STATS
 from codebased.storage import persist_repository, persist_file_revision, persist_object, fetch_objects, \
     persist_embedding, fetch_embedding, fetch_embedding_for_hash, fetch_object_handle, DatabaseMigrations
+from codebased.utils import get_content_hash
 
 commits, rollbacks, begins = 0, 0, 0
 
@@ -109,7 +109,7 @@ class App:
             ):
                 file_revision_abs_path = repo.path / path
                 content = get_file_bytes(file_revision_abs_path)
-                content_hash = hashlib.sha1(content).hexdigest()
+                content_hash = get_content_hash(content)
                 stat_result = file_revision_abs_path.stat()
                 size = stat_result.st_size
                 last_modified = datetime.fromtimestamp(stat_result.st_mtime)
@@ -195,7 +195,7 @@ class App:
                 yield embedding
             except NotFoundException:
                 text = render_object(obj)
-                content_hash = hashlib.sha1(text.encode('utf-8')).hexdigest()
+                content_hash = get_content_hash(text.encode('utf-8'))
                 try:
                     cached = fetch_embedding_for_hash(self.context.db, content_hash)
                     embedding_for_object = Embedding(

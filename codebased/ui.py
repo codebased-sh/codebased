@@ -16,6 +16,7 @@ from colorama import Fore, Style
 from codebased.app import App
 from codebased.core import Flags
 from codebased.editor import open_editor
+from codebased.exceptions import BadFileException
 from codebased.models import SearchResult
 from codebased.parser import render_object
 
@@ -153,7 +154,10 @@ def display_interactive_results(stdscr, results: list[SearchResult], start_line:
     # Display detailed information for the active result
     if 0 <= active_index < len(results):
         active_result = results[active_index]
-        detailed_info = get_detailed_info(active_result)
+        try:
+            detailed_info = get_detailed_info(active_result)
+        except BadFileException as e:
+            return
         render_start = start_line + len(results[:max_lines // 2]) + 1
         detailed_lines = detailed_info.split('\n')
 
@@ -169,7 +173,8 @@ def display_interactive_results(stdscr, results: list[SearchResult], start_line:
 
 
 def get_detailed_info(result: SearchResult) -> str:
-    return render_object(result.object_handle, context=True, file=False, line_numbers=True)
+    return render_object(result.object_handle, context=True, file=False, line_numbers=True,
+                         ensure_hash=result.object_handle.file_revision.file_revision.hash)
 
 
 def is_stdout_piped():
@@ -180,6 +185,17 @@ def print_search_result(result: SearchResult) -> None:
     obj = result.object_handle
     is_piped = is_stdout_piped()
 
+    try:
+        rendered_content = render_object(
+            obj,
+            context=True,
+            file=False,
+            line_numbers=True,
+            ensure_hash=obj.file_revision.file_revision.hash
+        )
+    except BadFileException:
+        return
+
     if not is_piped:
         # Print metadata to stderr only if not piped
         print(
@@ -188,7 +204,6 @@ def print_search_result(result: SearchResult) -> None:
         )
 
     # Render the object with line numbers
-    rendered_content = render_object(obj, context=True, file=False, line_numbers=True)
 
     # Print content to stdout and optionally line numbers to stderr
     for line, code in re.findall(r'^(\s*\d+)\s(.*)$', rendered_content, re.MULTILINE):
