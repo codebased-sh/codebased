@@ -62,10 +62,10 @@ class App:
         self._index_updated = threading.Condition()
 
     @property
-    def index_updated(self) -> threading.Condition:
+    def index_updated_condition(self) -> threading.Condition:
         return self._index_updated
 
-    def _index_worker(self, path: Path):
+    def _index_worker(self, path: Path) -> T.NoReturn:
         while True:
             try:
                 logger.debug(f"Index worker {path}")
@@ -90,7 +90,8 @@ class App:
                         self._index = index
                         STATS.increment("codebased.perform_search.cache_clear")
                         self.perform_search.cache_clear()
-                        self._index_updated.notify_all()
+                with self._index_updated:
+                    self._index_updated.notify_all()
             except Exception as e:
                 logger.exception(f"Exception in index worker: {e} (ignored)")
 

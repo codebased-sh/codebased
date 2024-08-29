@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import threading
+import typing as T
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -95,11 +96,17 @@ class InteractiveSearch:
             logger.exception(f"Error in search: {e}")
             raise
 
-    def _index_coordinator_worker(self):
-        while not self._shutdown.is_set():
-            # This will make sure the screen updates when the index changes.
-            self.app.index_updated.wait()
-            self.submit_search_task()
+    def _index_coordinator_worker(self) -> T.NoReturn:
+        try:
+            while not self._shutdown.is_set():
+                # This will make sure the screen updates when the index changes.
+                with self.app.index_updated_condition:
+                    self.app.index_updated_condition.wait()
+                logger.debug("Index updated, scheduling search task")
+                self.submit_search_task()
+        except Exception as e:
+            logger.exception(f"Error in index coordinator: {e}")
+            raise
 
     def refresh_screen(self, stdscr):
         while not self._shutdown.is_set():
