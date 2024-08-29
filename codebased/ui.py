@@ -3,6 +3,7 @@ from __future__ import annotations
 import curses
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -10,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import faiss
+from colorama import Fore, Style
 
 from codebased.app import App
 from codebased.editor import open_editor
@@ -137,7 +139,7 @@ def display_interactive_results(stdscr, results: list[SearchResult], start_line:
             break
         obj = result.object_handle
         score = result.score
-        result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}"
+        result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}"
         stdscr.addstr(start_line + i, 0, result_str[:width - 1])
 
     # Display detailed information for the active result
@@ -164,3 +166,27 @@ def get_detailed_info(result: SearchResult) -> str:
 
 def is_stdout_piped():
     return not os.isatty(sys.stdout.fileno())
+
+
+def print_search_result(result: SearchResult) -> None:
+    obj = result.object_handle
+    is_piped = is_stdout_piped()
+
+    if not is_piped:
+        # Print metadata to stderr only if not piped
+        print(
+            f"{Fore.MAGENTA}{obj.file_revision.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}{Style.RESET_ALL}",
+            file=sys.stderr
+        )
+
+    # Render the object with line numbers
+    rendered_content = render_object(obj, context=True, file=False, line_numbers=True)
+
+    # Print content to stdout and optionally line numbers to stderr
+    for line, code in re.findall(r'^(\s*\d+)\s(.*)$', rendered_content, re.MULTILINE):
+        if not is_piped:
+            print(f"{Fore.GREEN}{line}{Style.RESET_ALL}", file=sys.stderr, end='')
+        print(code)  # This goes to stdout
+
+    if not is_piped:
+        print(file=sys.stderr)  # Add a newline after the result for better separation
