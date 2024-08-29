@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import curses
 import logging
 import os
@@ -40,7 +41,6 @@ class SharedState:
     results: list = field(default_factory=list)
     active_index: int = 0
     scroll_position: int = 0
-    needs_refresh: bool = True
     latest_completed_search_id: int = -1
     current_search_id: int = 0
 
@@ -51,129 +51,173 @@ def perform_search(search_id, app, query, shared_state, state_lock, n):
         with state_lock:
             shared_state.results = results
             shared_state.latest_completed_search_id = search_id
-            shared_state.needs_refresh = True
     except Exception as e:
         logger.exception(f"Error in search: {e}")
         raise
 
 
-def interactive_loop(stdscr, app: App, flags: Flags):
-    curses.curs_set(0)
-    stdscr.nodelay(1)
+@dataclass
+class SharedState:
+    query: str = ""
+    results: list[SearchResult] = field(default_factory=list)
+    active_index: int = 0
+    scroll_position: int = 0
+    refresh_condition: threading.Condition = field(default_factory=threading.Condition)
+    latest_completed_search_id: int = -1
+    current_search_id: int = 0
 
-    shared_state = SharedState()
-    state_lock = threading.Lock()
 
-    def refresh_screen():
-        while True:
-            with state_lock:
+class InteractiveSearch:
+    def __init__(self, app: App, flags: Flags):
+        self.app = app
+        self.flags = flags
+        self.shared_state = SharedState()
+        self.state_lock = threading.Lock()
+        self.executor = ThreadPoolExecutor()
+        self._shutdown = threading.Event()
+
+    def restore_terminal(self):
+        curses.nocbreak()
+        curses.echo()
+        curses.curs_set(1)
+        curses.reset_shell_mode()
+        curses.endwin()
+        sys.stdout.write("\033[?1049l")
+        sys.stdout.flush()
+
+    def perform_search(self, search_id: int, query: str):
+        try:
+            results = self.app.perform_search(query, n=self.flags.n)
+            with self.state_lock:
+                self.shared_state.results = results
+                self.shared_state.latest_completed_search_id = search_id
+        except Exception as e:
+            logger.exception(f"Error in search: {e}")
+            raise
+
+    def _index_coordinator_worker(self):
+        while not self._shutdown.is_set():
+            # This will make sure the screen updates when the index changes.
+            self.app.index_updated.wait()
+            self.submit_search_task()
+
+    def refresh_screen(self, stdscr):
+        while not self._shutdown.is_set():
+            with self.state_lock:
                 height, width = stdscr.getmaxyx()
                 stdscr.clear()
-                if shared_state.query:
-                    stdscr.addstr(0, 0, f"Search: {shared_state.query}")
+                if self.shared_state.query:
+                    stdscr.addstr(0, 0, f"Search: {self.shared_state.query}")
                 else:
                     stdscr.addstr(0, 0, "Search: Try typing something...")
-                display_interactive_results(stdscr, shared_state.results, 2, height - 2,
-                                            shared_state.active_index, shared_state.scroll_position)
+                self.display_interactive_results(stdscr, 2, height - 2)
                 stdscr.refresh()
             time.sleep(0.05)
 
-    refresh_thread = threading.Thread(target=refresh_screen, daemon=True)
-    refresh_thread.start()
-    executor = ThreadPoolExecutor()
+    def display_interactive_results(self, stdscr, start_line: int, max_lines: int):
+        height, width = stdscr.getmaxyx()
 
-    while True:
-        key = stdscr.getch()
+        for i, result in enumerate(self.shared_state.results):
+            if i >= max_lines // 2:
+                break
+            obj = result.object_handle
+            result_str = f"{'> ' if i == self.shared_state.active_index else '  '}{obj.file_revision.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}"
+            stdscr.addstr(start_line + i, 0, result_str[:width - 1])
 
-        with state_lock:
-            if key == ord('\n'):  # Enter key
-                if shared_state.results:
-                    selected_result = shared_state.results[shared_state.active_index]
-                    start_coord = selected_result.object_handle.object.coordinates[0]
-                    open_editor(
-                        editor=app.context.config.editor,
-                        file=selected_result.object_handle.file_revision.path,
-                        row=start_coord[0] + 1,
-                        column=start_coord[1] + 1
-                    )
-                    shared_state.needs_refresh = True
-                continue
-            elif key == 27:  # Escape key
-                pass
-            elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
-                shared_state.query = shared_state.query[:-1]
-            elif key == curses.KEY_UP:
-                shared_state.active_index = max(0, shared_state.active_index - 1)
-                shared_state.scroll_position = 0
-            elif key == curses.KEY_DOWN:
-                shared_state.active_index = min(len(shared_state.results) - 1, shared_state.active_index + 1)
-                shared_state.scroll_position = 0
-            elif key == curses.KEY_PPAGE:  # Page Up
-                shared_state.scroll_position = max(0, shared_state.scroll_position - 10)
-            elif key == curses.KEY_NPAGE:  # Page Down
-                shared_state.scroll_position += 10
-            elif key != -1:
-                shared_state.query += chr(key)
-                shared_state.query = shared_state.query.replace('ƚ', '')
-            else:
-                continue  # Skip refresh if no key was pressed
+        if 0 <= self.shared_state.active_index < len(self.shared_state.results):
+            active_result = self.shared_state.results[self.shared_state.active_index]
+            try:
+                detailed_info = self.get_detailed_info(active_result)
+            except BadFileException:
+                return
+            render_start = start_line + len(self.shared_state.results[:max_lines // 2]) + 1
+            detailed_lines = detailed_info.split('\n')
 
-            executor.submit(
-                perform_search,
-                shared_state.current_search_id,
-                app,
-                shared_state.query,
-                shared_state,
-                state_lock,
-                n=flags.n
+            for i, line in enumerate(detailed_lines[self.shared_state.scroll_position:]):
+                if render_start + i >= height:
+                    break
+                stdscr.addstr(render_start + i, 0, line[:width - 1])
+
+            if len(detailed_lines) > height - render_start:
+                scroll_percentage = min(100, int(100 * self.shared_state.scroll_position / (
+                        len(detailed_lines) - (height - render_start))))
+                stdscr.addstr(height - 1, width - 5, f"{scroll_percentage:3d}%")
+
+    def get_detailed_info(self, result: SearchResult) -> str:
+        return render_object(result.object_handle, context=True, file=False, line_numbers=True,
+                             ensure_hash=result.object_handle.file_revision.file_revision.hash)
+
+    def handle_key_input(self, key: int) -> bool:
+        if key == ord('\n'):
+            if self.shared_state.results:
+                selected_result = self.shared_state.results[self.shared_state.active_index]
+                start_coord = selected_result.object_handle.object.coordinates[0]
+                open_editor(
+                    editor=self.app.context.config.editor,
+                    file=selected_result.object_handle.file_revision.path,
+                    row=start_coord[0] + 1,
+                    column=start_coord[1] + 1
+                )
+            return True
+        elif key == 27:  # Escape key
+            return False
+        elif key in (curses.KEY_BACKSPACE, 127):
+            self.shared_state.query = self.shared_state.query[:-1]
+        elif key == curses.KEY_UP:
+            self.shared_state.active_index = max(0, self.shared_state.active_index - 1)
+            self.shared_state.scroll_position = 0
+        elif key == curses.KEY_DOWN:
+            self.shared_state.active_index = min(len(self.shared_state.results) - 1, self.shared_state.active_index + 1)
+            self.shared_state.scroll_position = 0
+        elif key == curses.KEY_PPAGE:
+            self.shared_state.scroll_position = max(0, self.shared_state.scroll_position - 10)
+        elif key == curses.KEY_NPAGE:
+            self.shared_state.scroll_position += 10
+        elif key != -1:
+            self.shared_state.query += chr(key)
+            self.shared_state.query = self.shared_state.query.replace('ƚ', '')
+        else:
+            return True
+
+        self.submit_search_task()
+
+        if self.shared_state.latest_completed_search_id > self.shared_state.current_search_id:
+            self.shared_state.current_search_id = self.shared_state.latest_completed_search_id
+            self.shared_state.active_index = min(
+                self.shared_state.active_index,
+                max(0, len(self.shared_state.results) - 1)
             )
 
-            if shared_state.latest_completed_search_id > shared_state.current_search_id:
-                # New results are available
-                shared_state.current_search_id = shared_state.latest_completed_search_id
-                shared_state.active_index = min(shared_state.active_index, max(0, len(shared_state.results) - 1))
-                shared_state.needs_refresh = True
+        return True
 
-    raise RuntimeError("Should never exit.")
+    def submit_search_task(self):
+        self.executor.submit(
+            self.perform_search,
+            self.shared_state.current_search_id,
+            self.shared_state.query
+        )
 
+    def run(self, stdscr):
+        curses.curs_set(0)
+        stdscr.nodelay(1)
 
-def display_interactive_results(stdscr, results: list[SearchResult], start_line: int, max_lines: int, active_index: int,
-                                scroll_position: int):
-    height, width = stdscr.getmaxyx()
+        atexit.register(self.restore_terminal)
 
-    # Display results
-    for i, result in enumerate(results):
-        if i >= max_lines // 2:
-            break
-        obj = result.object_handle
-        score = result.score
-        result_str = f"{'> ' if i == active_index else '  '}{obj.file_revision.file_revision.path}:{obj.object.coordinates[0][0] + 1} {obj.object.name}"
-        stdscr.addstr(start_line + i, 0, result_str[:width - 1])
-
-    # Display detailed information for the active result
-    if 0 <= active_index < len(results):
-        active_result = results[active_index]
+        refresh_thread = threading.Thread(target=self.refresh_screen, args=(stdscr,), daemon=True)
+        refresh_thread.start()
+        index_coordinator_thread = threading.Thread(target=self._index_coordinator_worker, daemon=True)
+        index_coordinator_thread.start()
         try:
-            detailed_info = get_detailed_info(active_result)
-        except BadFileException as e:
-            return
-        render_start = start_line + len(results[:max_lines // 2]) + 1
-        detailed_lines = detailed_info.split('\n')
-
-        for i, line in enumerate(detailed_lines[scroll_position:]):
-            if render_start + i >= height:
-                break
-            stdscr.addstr(render_start + i, 0, line[:width - 1])
-
-        # Display scroll indicator
-        if len(detailed_lines) > height - render_start:
-            scroll_percentage = min(100, int(100 * scroll_position / (len(detailed_lines) - (height - render_start))))
-            stdscr.addstr(height - 1, width - 5, f"{scroll_percentage:3d}%")
-
-
-def get_detailed_info(result: SearchResult) -> str:
-    return render_object(result.object_handle, context=True, file=False, line_numbers=True,
-                         ensure_hash=result.object_handle.file_revision.file_revision.hash)
+            while not self._shutdown.is_set():
+                key = stdscr.getch()
+                with self.state_lock:
+                    if not self.handle_key_input(key):
+                        break
+        finally:
+            # will already be set unless there was an exception.
+            self._shutdown.set()
+            index_coordinator_thread.join()
+            refresh_thread.join()
 
 
 def is_stdout_piped():

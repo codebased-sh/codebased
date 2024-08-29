@@ -59,6 +59,11 @@ class App:
         self._lock = threading.Lock()
         self._events: queue.Queue[EventWrapper] = queue.Queue()
         self._index: faiss.Index | None = None
+        self._index_updated = threading.Condition()
+
+    @property
+    def index_updated(self) -> threading.Condition:
+        return self._index_updated
 
     def _index_worker(self, path: Path):
         while True:
@@ -84,8 +89,8 @@ class App:
                     with STATS.timer("codebased.index.worker.duration"):
                         self._index = index
                         STATS.increment("codebased.perform_search.cache_clear")
-                        # lmao
                         self.perform_search.cache_clear()
+                        self._index_updated.notify_all()
             except Exception as e:
                 logger.exception(f"Exception in index worker: {e} (ignored)")
 

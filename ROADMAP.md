@@ -2,12 +2,17 @@
 
 - Display preview on the right side
 - Reset cursor position after new search
-- Exact match search on names
+- Exact match / keyword search on names
+- Search for usages, etc. instead of just definitions
 - Highlight relevant parts of the matched code
 - Reranking?
 - Syntax highlighting
 
 ## Changelog:
+
+### 0.1.13
+
+- [X] Refresh search screen with new results when index changes
 
 ### 0.1.12
 
