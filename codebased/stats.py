@@ -56,8 +56,9 @@ class Stats:
         for key, value in self.counters.items():
             lines.append(f"  {key}: {value}")
         lines.append(f"Ratios:")
-        for key, (num,denom) in self.ratios.items():
-            lines.append(f"  {key}: {num/denom:.3f}")
+        for key, (num, denom) in self.ratios.items():
+            if denom > 0:
+                lines.append(f"  {key}: {num / denom:.3f}")
         return '\n'.join(lines)
 
 

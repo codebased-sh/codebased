@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import atexit
+import curses
 import logging
 import os
 import re
@@ -9,11 +11,12 @@ import textwrap
 from pathlib import Path
 from colorama import init, Fore, Style
 
-from codebased.app import get_app
+from codebased.app import get_app, App
+from codebased.filesystem import get_file_bytes
 from codebased.models import SearchResult
 from codebased.parser import render_object
 from codebased.stats import STATS
-from codebased.ui import logger, interactive_main, is_stdout_piped
+from codebased.ui import logger, is_stdout_piped, restore_terminal, interactive_loop
 
 init(autoreset=True)  # Initialize colorama
 LOG_FILE = Path.home() / ".codebased/codebased.log"
@@ -158,4 +161,27 @@ def noninteractive_main(root: Path, query: str, n: int):
         results = app.perform_search(query, faiss_index, n=n)
         display_results(results)
     finally:
+        logger.debug(STATS.dumps())
+
+
+def interactive_main(root: Path, n: int):
+    with STATS.timer("codebased.startup.duration"):
+        with STATS.timer("codebased.startup.app.duration"):
+            app = get_app()
+        with STATS.timer("codebased.startup.index.duration"):
+            faiss_index = app.create_index(root)
+    try:
+        atexit.register(restore_terminal)
+        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        STATS.import_cache_info(
+            "codebased.get_file_bytes.lru_cache_hit_rate",
+            get_file_bytes.cache_info(),
+        )
+        STATS.import_cache_info(
+            "codebased.perform_search.lru_cache_hit_rate",
+            App.perform_search.cache_info(),
+        )
         logger.debug(STATS.dumps())

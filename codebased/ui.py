@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import atexit
 import curses
 import logging
 import os
@@ -9,16 +8,13 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import faiss
 
-from codebased.app import get_app, App
+from codebased.app import App
 from codebased.editor import open_editor
-from codebased.filesystem import get_file_bytes
 from codebased.models import SearchResult
 from codebased.parser import render_object
-from codebased.stats import STATS
 
 logger = logging.getLogger(__name__)
 
@@ -33,29 +29,6 @@ def restore_terminal():
     # Exit alternate screen
     sys.stdout.write("\033[?1049l")
     sys.stdout.flush()
-
-
-def interactive_main(root: Path, n: int):
-    with STATS.timer("codebased.startup.duration"):
-        with STATS.timer("codebased.startup.app.duration"):
-            app = get_app()
-        with STATS.timer("codebased.startup.index.duration"):
-            faiss_index = app.create_index(root)
-    try:
-        atexit.register(restore_terminal)
-        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
-    except KeyboardInterrupt:
-        pass
-    finally:
-        STATS.import_cache_info(
-            "codebased.get_file_bytes.lru_cache_hit_rate",
-            get_file_bytes.cache_info(),
-        )
-        STATS.import_cache_info(
-            "codebased.perform_search.lru_cache_hit_rate",
-            App.perform_search.cache_info(),
-        )
-        logger.debug(STATS.dumps())
 
 
 @dataclass
