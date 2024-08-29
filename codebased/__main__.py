@@ -153,7 +153,7 @@ def interactive_main(flags: Flags):
             faiss_index = app.create_index(flags.root, background=flags.background)
     try:
         atexit.register(restore_terminal)
-        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, flags))
+        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, flags))
     except KeyboardInterrupt:
         pass
     finally:

@@ -10,7 +10,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-import faiss
 from colorama import Fore, Style
 
 from codebased.app import App
@@ -58,7 +57,7 @@ def perform_search(search_id, app, query, shared_state, state_lock, n):
         raise
 
 
-def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, flags: Flags):
+def interactive_loop(stdscr, app: App, flags: Flags):
     curses.curs_set(0)
     stdscr.nodelay(1)
 

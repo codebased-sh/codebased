@@ -1,5 +1,7 @@
 ## Roadmap (ranked priorities):
 
+- Display preview on the right side
+- Reset cursor position after new search
 - Exact match search on names
 - Highlight relevant parts of the matched code
 - Reranking?

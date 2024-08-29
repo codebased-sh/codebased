@@ -14,7 +14,7 @@ import tree_sitter_rust
 import tree_sitter_typescript
 
 from codebased.filesystem import get_file_bytes, get_file_lines
-from codebased.models import PersistentFileRevision, Object, Coordinates, ObjectHandle, FileRevisionHandle
+from codebased.models import Object, Coordinates, ObjectHandle, FileRevisionHandle
 from codebased.segfault import get_capsule_pointer
 
 
