@@ -14,6 +14,7 @@ import faiss
 from colorama import Fore, Style
 
 from codebased.app import App
+from codebased.core import Flags
 from codebased.editor import open_editor
 from codebased.models import SearchResult
 from codebased.parser import render_object
@@ -56,7 +57,7 @@ def perform_search(search_id, app, faiss_index, query, shared_state, state_lock,
         raise
 
 
-def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, n: int):
+def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, flags: Flags):
     curses.curs_set(0)
     stdscr.nodelay(1)
 
@@ -117,8 +118,16 @@ def interactive_loop(stdscr, app: App, faiss_index: faiss.Index, n: int):
             else:
                 continue  # Skip refresh if no key was pressed
 
-            executor.submit(perform_search, shared_state.current_search_id, app, faiss_index, shared_state.query,
-                            shared_state, state_lock, n=n)
+            executor.submit(
+                perform_search,
+                shared_state.current_search_id,
+                app,
+                faiss_index,
+                shared_state.query,
+                shared_state,
+                state_lock,
+                n=(flags.n)
+            )
 
             if shared_state.latest_completed_search_id > shared_state.current_search_id:
                 # New results are available

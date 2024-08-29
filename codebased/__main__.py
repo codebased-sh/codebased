@@ -10,6 +10,7 @@ from pathlib import Path
 from colorama import init
 
 from codebased.app import get_app, App
+from codebased.core import Flags
 from codebased.filesystem import get_file_bytes
 from codebased.models import SearchResult
 from codebased.stats import STATS
@@ -116,10 +117,11 @@ def cli():
     interactive = args.i or args.query is None
     logger.debug(f"Started w/ args: {args}")
     root = args.root.resolve()
+    flags = Flags(n=args.n, interactive=interactive, query=args.query, root=root)
     if interactive:
-        interactive_main(root, args.n)
+        interactive_main(flags)
     else:
-        noninteractive_main(root, args.query, args.n)
+        noninteractive_main(flags)
 
 
 def display_results(results: list[SearchResult]) -> None:
@@ -127,26 +129,26 @@ def display_results(results: list[SearchResult]) -> None:
         print_search_result(result)
 
 
-def noninteractive_main(root: Path, query: str, n: int):
+def noninteractive_main(flags: Flags):
     app = get_app()
-    faiss_index = app.create_index(root)
+    faiss_index = app.create_index(flags.root)
     try:
-        results = app.perform_search(query, faiss_index, n=n)
+        results = app.perform_search(flags.query, faiss_index, n=flags.n)
         for result in results:
             print_search_result(result)
     finally:
         logger.debug(STATS.dumps())
 
 
-def interactive_main(root: Path, n: int):
+def interactive_main(flags: Flags):
     with STATS.timer("codebased.startup.duration"):
         with STATS.timer("codebased.startup.app.duration"):
             app = get_app()
         with STATS.timer("codebased.startup.index.duration"):
-            faiss_index = app.create_index(root)
+            faiss_index = app.create_index(flags.root)
     try:
         atexit.register(restore_terminal)
-        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, n))
+        curses.wrapper(lambda stdscr: interactive_loop(stdscr, app, faiss_index, flags))
     except KeyboardInterrupt:
         pass
     finally:

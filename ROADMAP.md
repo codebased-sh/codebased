@@ -8,6 +8,10 @@
 
 ## Changelog:
 
+### 0.1.12
+
+- [ ] Re-index when files change
+
 ### 0.1.11
 
-- Rawdog (hardcode) OpenAI key for beta users.
+- [X] Rawdog (hardcode) OpenAI key for beta users.

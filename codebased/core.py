@@ -6,11 +6,9 @@ import getpass
 import logging
 import os
 import sqlite3
-import textwrap
 from functools import cached_property
 from pathlib import Path
 
-from codebased.models import EDITOR
 import tiktoken
 import toml
 from openai import OpenAI
@@ -18,6 +16,7 @@ from tiktoken import Encoding
 
 from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS, DEFAULT_EDITOR
 from codebased.exceptions import NoApplicationDirectoryException
+from codebased.models import EDITOR
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -200,3 +199,11 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 def greet():
     with open(PACKAGE_DIR / "GREETING.txt") as f:
         print(f.read())
+
+
+@dataclasses.dataclass
+class Flags:
+    n: int = 10
+    interactive: bool = False
+    query: str = None
+    root: Path = Path.cwd()
