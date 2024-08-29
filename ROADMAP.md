@@ -13,6 +13,7 @@
 ### 0.1.13
 
 - [X] Refresh search screen with new results when index changes
+- [X] Fix bug where the search results didn't update until the user typed another character.
 
 ### 0.1.12
 
