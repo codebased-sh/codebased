@@ -1,6 +1,5 @@
 ## Roadmap (ranked priorities):
 
-- Re-index when files change
 - Exact match search on names
 - Highlight relevant parts of the matched code
 - Reranking?
@@ -11,6 +10,7 @@
 ### 0.1.12
 
 - [X] Re-index when files change
+- [X] Fix several cache invalidation issues
 
 ### 0.1.11
 
