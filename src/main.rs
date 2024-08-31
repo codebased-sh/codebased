@@ -59,12 +59,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn run_init() -> Result<(), Box<dyn std::error::Error>> {
-    let root = find_git_root()?;
-    create_cbignore(&root)?;
-    create_database(&root)?;
-    Ok(())
-}
+use std::fs;
 
 fn find_git_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let mut current_dir = std::env::current_dir()?;
@@ -85,16 +80,38 @@ fn create_cbignore(root: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+fn run_init() -> Result<(), Box<dyn std::error::Error>> {
+    let root = find_git_root()?;
+    create_cbignore(&root)?;
+    create_codebased_dir(&root)?;
+    create_database(&root)?;
+    Ok(())
+}
+
+fn create_codebased_dir(root: &Path) -> Result<(), std::io::Error> {
+    let codebased_dir = root.join(".codebased");
+    if !codebased_dir.exists() {
+        fs::create_dir(&codebased_dir)?;
+    }
+    Ok(())
+}
+
 fn create_database(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let db_path = root.join(".codebased.db");
-    let mut conn = Connection::open(db_path)?;
+    let db_dir = root.join(".codebased");
+    let db_path = db_dir.join("codebased.db");
+
+    let mut conn = Connection::open(&db_path)?;
+
     // Define migrations
     let migrations = Migrations::new(vec![
         M::up(include_str!("migrations/000_core.sql")),
     ]);
+
     // Apply PRAGMA
     conn.pragma_update(None, "journal_mode", &"WAL")?;
+
     // Apply migrations
     migrations.to_latest(&mut conn)?;
+
     Ok(())
 }
