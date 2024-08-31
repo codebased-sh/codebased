@@ -3,7 +3,11 @@ use assert_cmd::Command;
 #[test]
 fn test_init_command() {
     let mut cmd = Command::cargo_bin("codebased").unwrap();
-    cmd.arg("init").assert().success().stdout(predicates::str::contains("Initializing..."));
+    cmd.arg("init")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Initializing..."))
+        .stdout(predicates::str::contains("Initialization completed successfully."));
 }
 
 #[test]
