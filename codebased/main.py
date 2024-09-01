@@ -21,7 +21,8 @@ def exit_with_error(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Codebased CLI tool"
+        description="Codebased CLI tool",
+        usage="Codebased [-h | --version] {search} ..."
     )
     parser.add_argument(
         '--version',
@@ -35,15 +36,21 @@ def main():
 
     search_parser = subparsers.add_parser(
         'search',
-        help='Search for Git repository'
+        help='Search for Git repository',
+    )
+    # Example: Add an argument to the search command
+    search_parser.add_argument(
+        '-d', '--directory',
+        help='Specify the directory to start the search from',
+        default=Path.cwd(),
+        type=Path
     )
 
     args = parser.parse_args()
 
     if args.command == 'search':
-        workdir = Path.cwd()
         search_result_dir = find_root_git_repository(
-            workdir
+            args.directory
         )
         if search_result_dir is None:
             exit_with_error(

@@ -250,7 +250,7 @@ def check_codebased_cli(
         stderr=subprocess.PIPE,
         stdin=subprocess.PIPE
     )
-    assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}'
+    assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {proc.stdout}, stderr: {proc.stderr}'
     if isinstance(
             stdout,
             bytes
@@ -398,7 +398,7 @@ class TestCli(
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
-                stdout=re.compile(re.escape(b'usage: main.py [-h] [--version] {search} ...'), re.ASCII),
+                stdout=re.compile(re.escape(b'usage: Codebased [-h | --version] {search} ...'), re.ASCII),
                 args=['--help']
             )
             # Note: We're not checking the exact help output as it might change and be system-dependent
