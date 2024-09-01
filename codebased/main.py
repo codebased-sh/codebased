@@ -5,11 +5,7 @@ from pathlib import Path
 VERSION = "0.0.1"
 
 
-def exit_with_error(
-        message: str,
-        *,
-        exit_code: int = 1
-):
+def exit_with_error(message: str, *, exit_code: int = 1):
     print(
         message,
         file=sys.stderr
