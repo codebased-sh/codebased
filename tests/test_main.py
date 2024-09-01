@@ -203,6 +203,10 @@ class TestCli(unittest.TestCase):
                 stdout=stdout,
                 args=['search']
             )
+            assert (path / '.codebased').exists()
+            assert (path / '.codebased' / 'codebased.db').exists()
+            # TODO: Check index is saved
+            # assert (path / '.codebased' / 'index.faiss').exists()
             check_codebased_cli(
                 cwd=path / 'a-directory',
                 exit_code=exit_code,
