@@ -402,3 +402,38 @@ class TestCli(
                 args=['--help']
             )
             # Note: We're not checking the exact help output as it might change and be system-dependent
+
+    def test_directory_argument(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(
+                (
+                    Path('.'),
+                    (
+                        (Path('README.md'), b'Hello, world!'),
+                        (Path('.git'), ()),
+                    )
+                ),
+                path
+            )
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+
+            # Test with -d argument
+            check_codebased_cli(
+                cwd=Path.cwd(),
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search', '-d', str(path)]
+            )
+
+            # Test with --directory argument
+            check_codebased_cli(
+                cwd=Path.cwd(),
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search', '--directory', str(path)]
+            )
