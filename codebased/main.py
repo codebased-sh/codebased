@@ -12,14 +12,13 @@ VERSION = "0.0.1"
 def find_root_git_repository(path: Path):
     # copy to mutate
     search_current_dir = Path(path).resolve()
-    search_result_dir = None
-    do_while_cond = True
-    while do_while_cond:
+    done = False
+    while not done:
         if (search_current_dir / '.git').is_dir():
-            search_result_dir = search_current_dir
+            return search_current_dir
         search_current_dir = search_current_dir.parent.resolve()
-        do_while_cond = search_current_dir != Path('/')
-    return search_result_dir
+        done = search_current_dir == Path('/')
+    return None
 
 
 def exit_with_error(message: str, *, exit_code: int = 1) -> T.NoReturn:
@@ -34,6 +33,7 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 
 
 def main():
+    # TODO: OpenAI API key / authentication to Codebased API.
     parser = argparse.ArgumentParser(
         description="Codebased CLI tool",
         usage="Codebased [-h | --version] {search} ..."
