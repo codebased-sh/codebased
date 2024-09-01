@@ -1,5 +1,8 @@
+import argparse
 import sys
 from pathlib import Path
+
+VERSION = "0.0.1"
 
 
 def exit_with_error(message: str, *, exit_code: int = 1):
@@ -8,11 +11,20 @@ def exit_with_error(message: str, *, exit_code: int = 1):
 
 
 def main():
-    workdir = Path.cwd()
-    search_result_dir = find_root_git_repository(workdir)
-    if search_result_dir is None:
-        exit_with_error('Codebased must be run within a Git repository.')
-    print(f'Found Git repository {search_result_dir}')
+    parser = argparse.ArgumentParser(description="Codebased CLI tool")
+    parser.add_argument('--version', action='version', version=f'Codebased {VERSION}')
+    subparsers = parser.add_subparsers(dest='command', required=True)
+
+    search_parser = subparsers.add_parser('search', help='Search for Git repository')
+
+    args = parser.parse_args()
+
+    if args.command == 'search':
+        workdir = Path.cwd()
+        search_result_dir = find_root_git_repository(workdir)
+        if search_result_dir is None:
+            exit_with_error('Codebased must be run within a Git repository.')
+        print(f'Found Git repository {search_result_dir}')
 
 
 def find_root_git_repository(path: Path):
@@ -24,7 +36,6 @@ def find_root_git_repository(path: Path):
         if (search_current_dir / '.git').is_dir():
             search_result_dir = search_current_dir
         search_current_dir = search_current_dir.parent.resolve()
-        # How would this work on Windows?
         do_while_cond = search_current_dir != Path('/')
     return search_result_dir
 

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from codebased.main import find_root_git_repository
+from codebased.main import find_root_git_repository, VERSION
 
 
 # Algebraically:
@@ -27,7 +27,7 @@ def create_tree(dir_entry, relative_to: Path):
 class TestGitDetection(unittest.TestCase):
     def test_in_a_regular_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(tempdir)
+            path = Path(tempdir).resolve()
             create_tree(
                 (
                     Path('.'),
@@ -55,7 +55,7 @@ class TestGitDetection(unittest.TestCase):
 
     def test_in_a_git_repository_with_submodules(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(tempdir)
+            path = Path(tempdir).resolve()
             create_tree(
                 (
                     Path('.'),
@@ -89,7 +89,7 @@ class TestGitDetection(unittest.TestCase):
 
     def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(tempdir)
+            path = Path(tempdir).resolve()
             create_tree(
                 (
                     Path('.'),
@@ -130,23 +130,23 @@ class TestGitDetection(unittest.TestCase):
             assert find_root_git_repository(root) is None
 
 
-def check_codebased_cli(*, cwd: Path, exit_code: int, stderr: bytes, stdout: bytes):
+def check_codebased_cli(*, cwd: Path, exit_code: int, stderr: bytes, stdout: bytes, args: list[str]):
     proc = subprocess.run(
-        ['python', '-m', 'codebased.main'],
+        ['python', '-m', 'codebased.main', *args],
         cwd=cwd.resolve(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         stdin=subprocess.PIPE
     )
-    assert proc.returncode == exit_code
-    assert proc.stdout == stdout
-    assert proc.stderr == stderr
+    assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}'
+    assert proc.stdout == stdout, f'{proc.stdout} != {stdout}'
+    assert proc.stderr == stderr, f'{proc.stderr} != {stderr}'
 
 
 class TestCli(unittest.TestCase):
     def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(tempdir)
+            path = Path(tempdir).resolve()
             create_tree(
                 (
                     Path('.'),
@@ -163,11 +163,11 @@ class TestCli(unittest.TestCase):
             exit_code = 1
             stdout = b''
             stderr = b'Codebased must be run within a Git repository.\n'
-            check_codebased_cli(cwd=path, exit_code=exit_code, stderr=stderr, stdout=stdout)
+            check_codebased_cli(cwd=path, exit_code=exit_code, stderr=stderr, stdout=stdout, args=['search'])
 
     def test_run_inside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(tempdir)
+            path = Path(tempdir).resolve()
             create_tree(
                 (
                     Path('.'),
@@ -182,9 +182,35 @@ class TestCli(unittest.TestCase):
                 path
             )
             exit_code = 0
-            # TODO: Is this platform dependent? Python seems to be adding /private prefix to the path.
-            # This might be idiosyncratic to the TemporaryDirectory implementation.
-            stdout = b'Found Git repository /private' + str(path).encode('utf-8') + b'\n'
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
-            check_codebased_cli(cwd=path, exit_code=exit_code, stderr=stderr, stdout=stdout)
-            check_codebased_cli(cwd=path / 'a-directory', exit_code=exit_code, stderr=stderr, stdout=stdout)
+            check_codebased_cli(
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search']
+            )
+            check_codebased_cli(
+                cwd=path / 'a-directory',
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search']
+            )
+
+    def test_version(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir)
+            exit_code = 0
+            stdout = f'Codebased {VERSION}\n'.encode('utf-8')
+            stderr = b''
+            check_codebased_cli(cwd=path, exit_code=exit_code, stderr=stderr, stdout=stdout, args=['--version'])
+
+    def test_help(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir)
+            exit_code = 0
+            stderr = b''
+            check_codebased_cli(cwd=path, exit_code=exit_code, stderr=stderr, stdout=b'', args=['--help'])
+            # Note: We're not checking the exact help output as it might change and be system-dependent
