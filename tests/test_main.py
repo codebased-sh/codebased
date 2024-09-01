@@ -5,8 +5,62 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-
 from codebased.main import find_root_git_repository, VERSION
+
+SUBMODULE_REPO = (Path('.'), (
+    (Path('README.md'), b'Hello, world!'),
+    (Path('.git'), ()),
+    (Path('submodule'), (
+        (Path('README.md'), b'Hello, world!'),
+        (
+            Path('below-submodule'),
+            (
+                (
+                    (
+                        Path('code.py'),
+                        b'print("Hello, world!")'),
+                )
+            )
+        ),
+        # Git submodules contain a .git **FILE**.
+        # This points to a subdirectory of the parent .git/modules directory.
+        (Path(
+            '.git'
+        ), b'')
+    ))
+)
+                  )
+
+SIMPLE_NOT_REPO = (
+    Path('.'),
+    (
+        (Path('README.md'), b'Hello, world!'),
+        (Path('a-directory'), (
+            ((Path('code.py'), b'print("Hello, world!")'),)
+        )),
+    )
+)
+
+SIMPLE_REPO = (
+    Path(
+        '.'
+    ),
+    (
+        (Path(
+            'README.md'
+        ), b'Hello, world!'),
+        (Path(
+            'a-directory'
+        ), (
+             ((Path(
+                 'code.py'
+             ), b'print("Hello, world!")'),)
+         )),
+        (Path(
+            '.git'
+        ), ()),
+    )
+)
 
 
 # Algebraically:
@@ -14,63 +68,22 @@ from codebased.main import find_root_git_repository, VERSION
 #  Directory = tuple[Path, tuple[DirEntry]]
 #  DirEntry = Union[File | Directory]
 
-def create_tree(
-        dir_entry,
-        relative_to: Path
-):
+def create_tree(dir_entry, relative_to: Path):
     path, contents = dir_entry
     absolute_path = relative_to / path
-    if isinstance(
-            contents,
-            bytes
-    ):
-        absolute_path.write_bytes(
-            contents
-        )
+    if isinstance(contents, bytes):
+        absolute_path.write_bytes(contents)
     else:
-        absolute_path.mkdir(
-            exist_ok=True
-        )
+        absolute_path.mkdir(exist_ok=True)
         for entry in contents:
-            create_tree(
-                entry,
-                absolute_path
-            )
+            create_tree(entry, absolute_path)
 
 
-class TestGitDetection(
-    unittest.TestCase
-):
-    def test_in_a_regular_git_repository(
-            self
-    ):
+class TestGitDetection(unittest.TestCase):
+    def test_in_a_regular_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            ).resolve()
-            create_tree(
-                (
-                    Path(
-                        '.'
-                    ),
-                    (
-                        (Path(
-                            'README.md'
-                        ), b'Hello, world!'),
-                        (Path(
-                            'a-directory'
-                        ), (
-                             ((Path(
-                                 'code.py'
-                             ), b'print("Hello, world!")'),)
-                         )),
-                        (Path(
-                            '.git'
-                        ), ()),
-                    )
-                ),
-                path
-            )
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO, path)
             test_paths = [
                 path,
                 path / 'a-directory',
@@ -79,58 +92,14 @@ class TestGitDetection(
                 path / 'README.md'
             ]
             for test_path in test_paths:
-                with self.subTest(
-                        test_path=test_path
-                ):
-                    result = find_root_git_repository(
-                        test_path
-                    )
-                    self.assertEqual(
-                        result,
-                        path
-                    )
+                with self.subTest(test_path=test_path):
+                    result = find_root_git_repository(test_path)
+                    self.assertEqual(result, path)
 
-    def test_in_a_git_repository_with_submodules(
-            self
-    ):
+    def test_in_a_git_repository_with_submodules(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            ).resolve()
-            create_tree(
-                (
-                    Path(
-                        '.'
-                    ),
-                    (
-                        (Path(
-                            'README.md'
-                        ), b'Hello, world!'),
-                        (Path(
-                            '.git'
-                        ), ()),
-                        (Path(
-                            'submodule'
-                        ), (
-                             (Path(
-                                 'README.md'
-                             ), b'Hello, world!'),
-                             (Path(
-                                 'below-submodule'
-                             ), (
-                                  ((Path(
-                                      'code.py', ), b'print("Hello, world!")'),)
-                              )),
-                             # Git submodules contain a .git **FILE**.
-                             # This points to a subdirectory of the parent .git/modules directory.
-                             (Path(
-                                 '.git'
-                             ), b'')
-                         ))
-                    )
-                ),
-                path
-            )
+            path = Path(tempdir).resolve()
+            create_tree(SUBMODULE_REPO, path)
             test_paths = [
                 path,
                 path / 'submodule',
@@ -139,16 +108,9 @@ class TestGitDetection(
                 path / 'README.md'
             ]
             for test_path in test_paths:
-                with self.subTest(
-                        test_path=test_path
-                ):
-                    result = find_root_git_repository(
-                        test_path
-                    )
-                    self.assertEqual(
-                        result,
-                        path
-                    )
+                with self.subTest(test_path=test_path):
+                    result = find_root_git_repository(test_path)
+                    self.assertEqual(result, path)
 
     def test_run_outside_a_git_repository(
             self
@@ -158,23 +120,7 @@ class TestGitDetection(
                 tempdir
             ).resolve()
             create_tree(
-                (
-                    Path(
-                        '.'
-                    ),
-                    (
-                        (Path(
-                            'README.md'
-                        ), b'Hello, world!'),
-                        (Path(
-                            'a-directory'
-                        ), (
-                             ((Path(
-                                 'code.py'
-                             ), b'print("Hello, world!")'),)
-                         )),
-                    )
-                ),
+                SIMPLE_NOT_REPO,
                 path
             )
             test_paths = [
@@ -184,55 +130,19 @@ class TestGitDetection(
                 path
             ]
             for test_path in test_paths:
-                with self.subTest(
-                        test_path=test_path
-                ):
-                    result = find_root_git_repository(
-                        test_path
-                    )
-                    self.assertIs(
-                        result,
-                        None
-                    )
-            result2 = find_root_git_repository(
-                path / 'a-directory' / 'code.py'
-            )
-            self.assertIs(
-                result2,
-                None
-            )
-            result3 = find_root_git_repository(
-                path / 'README.md'
-            )
-            self.assertIs(
-                result3,
-                None
-            )
-            result4 = find_root_git_repository(
-                path
-            )
-            self.assertIs(
-                result4,
-                None
-            )
+                with self.subTest(test_path=test_path):
+                    result = find_root_git_repository(test_path)
+                    self.assertIs(result, None)
 
-    def test_run_at_root(
-            self
-    ):
+    def test_run_at_root(self):
         # You never know what's going to happen on someone's laptop.
         # Someone's probably managing their entire filesystem using Git.
         # That's how you *win* this test, instead of merely passing it.
-        root = Path(
-            '/'
-        )
+        root = Path('/')
         if (root / '.git').is_dir():
-            assert find_root_git_repository(
-                root
-            ) == root
+            assert find_root_git_repository(root) == root
         else:
-            assert find_root_git_repository(
-                root
-            ) is None
+            assert find_root_git_repository(root) is None
 
 
 def check_codebased_cli(
@@ -251,57 +161,21 @@ def check_codebased_cli(
         stdin=subprocess.PIPE
     )
     assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {proc.stdout}, stderr: {proc.stderr}'
-    if isinstance(
-            stdout,
-            bytes
-    ):
+    if isinstance(stdout, bytes):
         assert proc.stdout == stdout, f'{proc.stdout} != {stdout}'
     else:
-        assert stdout.match(
-            proc.stdout
-        ), proc.stdout
-    if isinstance(
-            stderr,
-            bytes
-    ):
+        assert stdout.match(proc.stdout), proc.stdout
+    if isinstance(stderr, bytes):
         assert proc.stderr == stderr, f'{proc.stderr} != {stderr}'
     else:
-        assert stderr.match(
-            proc.stderr
-        ), proc.stderr
+        assert stderr.match(proc.stderr), proc.stderr
 
 
-class TestCli(
-    unittest.TestCase
-):
-    def test_run_outside_a_git_repository(
-            self
-    ):
+class TestCli(unittest.TestCase):
+    def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            ).resolve()
-            create_tree(
-                (
-                    Path(
-                        '.'
-                    ),
-                    (
-                        (Path(
-                            'README.md'
-                        ), b'Hello, world!'),
-                        (Path(
-                            'a-directory'
-                        ), (
-                             ((Path(
-                                 'code.py'
-                             ), b'print("Hello, world!")'),)
-                         )),
-                        # (Path('.git'), ()),
-                    )
-                ),
-                path
-            )
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_NOT_REPO, path)
             exit_code = 1
             stdout = b''
             stderr = b'Codebased must be run within a Git repository.\n'
@@ -317,38 +191,10 @@ class TestCli(
             self
     ):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            ).resolve()
-            create_tree(
-                (
-                    Path(
-                        '.'
-                    ),
-                    (
-                        (Path(
-                            'README.md'
-                        ), b'Hello, world!'),
-                        (Path(
-                            'a-directory'
-                        ), (
-                             ((Path(
-                                 'code.py'
-                             ), b'print("Hello, world!")'),)
-                         )),
-                        (Path(
-                            '.git'
-                        ), ()),
-                    )
-                ),
-                path
-            )
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(
-                path
-            ).encode(
-                'utf-8'
-            ) + b'\n'
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
             check_codebased_cli(
                 cwd=path,
@@ -365,17 +211,11 @@ class TestCli(
                 args=['search']
             )
 
-    def test_version(
-            self
-    ):
+    def test_version(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            )
+            path = Path(tempdir)
             exit_code = 0
-            stdout = f'Codebased {VERSION}\n'.encode(
-                'utf-8'
-            )
+            stdout = f'Codebased {VERSION}\n'.encode('utf-8')
             stderr = b''
             check_codebased_cli(
                 cwd=path,
@@ -385,13 +225,9 @@ class TestCli(
                 args=['--version']
             )
 
-    def test_help(
-            self
-    ):
+    def test_help(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            )
+            path = Path(tempdir)
             exit_code = 0
             stderr = b''
             check_codebased_cli(
@@ -406,16 +242,7 @@ class TestCli(
     def test_directory_argument(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(
-                (
-                    Path('.'),
-                    (
-                        (Path('README.md'), b'Hello, world!'),
-                        (Path('.git'), ()),
-                    )
-                ),
-                path
-            )
+            create_tree(SIMPLE_REPO, path)
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
