@@ -419,7 +419,22 @@ def main():
                     else:
                         embeddings = embedding_scheduler(request)
                         embeddings_batch.extend(embeddings)
-                persist_embeddings(embeddings_batch, db)
+                db.executemany(
+                    """
+                            insert into embedding
+                            (object_id, data, content_sha256)
+                            values
+                            (:object_id, :data, :content_sha256)
+                        """,
+                    [
+                        {
+                            'object_id': e1.object_id,
+                            'data': e1.data,
+                            'content_sha256': e1.content_hash
+                        }
+                        for e1 in embeddings_batch
+                    ]
+                )
                 embeddings_to_persist.extend(embeddings_batch)
             elif isinstance(event, Events.FaissInserts):
                 embeddings_to_persist = event.embeddings
