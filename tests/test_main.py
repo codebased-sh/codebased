@@ -112,17 +112,10 @@ class TestGitDetection(unittest.TestCase):
                     result = find_root_git_repository(test_path)
                     self.assertEqual(result, path)
 
-    def test_run_outside_a_git_repository(
-            self
-    ):
+    def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            path = Path(
-                tempdir
-            ).resolve()
-            create_tree(
-                SIMPLE_NOT_REPO,
-                path
-            )
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_NOT_REPO, path)
             test_paths = [
                 path / 'a-directory',
                 path / 'a-directory' / 'code.py',

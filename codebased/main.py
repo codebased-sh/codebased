@@ -7,6 +7,7 @@ import sqlite3
 import sys
 import typing as T
 from collections import namedtuple
+from functools import cached_property
 from pathlib import Path
 
 import faiss
@@ -122,6 +123,58 @@ def get_request_scheduler(
     return schedule_request
 
 
+@dataclasses.dataclass
+class Config:
+    root: Path
+    OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
+    embeddings: EmbeddingsConfig = EmbeddingsConfig()
+
+    @property
+    def codebased_directory(self) -> Path:
+        directory = self.root / '.codebased'
+        directory.mkdir(exist_ok=True)
+        return directory
+
+    @property
+    def index_path(self) -> Path:
+        return self.codebased_directory / 'index.faiss'
+
+
+@dataclasses.dataclass
+class Dependencies:
+    # config must be passed in explicitly.
+    config: Config
+
+    @cached_property
+    def openai_client(self) -> OpenAI:
+        return OpenAI(api_key=self.config.OPENAI_API_KEY)
+
+    @cached_property
+    def index(self) -> faiss.Index:
+        index_path = self.config.index_path
+        if index_path.exists():
+            index = faiss.read_index(str(index_path))
+        else:
+            index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.config.embeddings.dimensions))
+        return index
+
+    @cached_property
+    def db(self) -> sqlite3.Connection:
+        db = get_db(self.config.codebased_directory / 'codebased.db')
+        migrations = DatabaseMigrations(db, Path(__file__).parent / 'migrations')
+        migrations.initialize()
+        migrations.migrate()
+        return db
+
+    @cached_property
+    def gitignore(self) -> T.Callable[[Path], bool]:
+        gitignore_path = self.config.root / '.gitignore'
+        try:
+            return gitignore_parser.parse_gitignore(gitignore_path, base_dir=self.config.root)
+        except FileNotFoundError:
+            return lambda _: False
+
+
 def main():
     # TODO: OpenAI API key / authentication to Codebased API.
     parser = argparse.ArgumentParser(
@@ -156,34 +209,18 @@ def main():
         git_repository_dir = find_root_git_repository(args.directory)
         if git_repository_dir is None:
             exit_with_error('Codebased must be run within a Git repository.')
-        git_repository_dir: Path = git_repository_dir
         print(f'Found Git repository {git_repository_dir}')
-
-        codebased_directory = git_repository_dir / '.codebased'
-        if not codebased_directory.exists():
-            codebased_directory.mkdir()
-        db_path = codebased_directory / 'codebased.db'
-        index_path = codebased_directory / 'index.faiss'
-        # This should create the file if it doesn't exist.
-        db = get_db(db_path)
+        git_repository_dir: Path = git_repository_dir
         secrets_ = Secrets.magic()
-
-        oai_client = OpenAI(api_key=secrets_.OPENAI_API_KEY)
         embedding_config = EmbeddingsConfig()
+        config = Config(root=git_repository_dir, OPENAI_API_KEY=secrets_.OPENAI_API_KEY, embeddings=embedding_config)
+        dependencies = Dependencies(config=config)
+        oai_client = dependencies.openai_client
+        ignore = dependencies.gitignore
+        db = dependencies.db
+        index = dependencies.index
 
-        if index_path.exists():
-            index = faiss.read_index(str(index_path))
-        else:
-            index = faiss.IndexIDMap2(faiss.IndexFlatL2(embedding_config.dimensions))
-        migrations = DatabaseMigrations(db, Path(__file__).parent / 'migrations')
-        migrations.initialize()
-        migrations.migrate()
-        root_gitignore_path = git_repository_dir / '.gitignore'
-        try:
-            ignore = gitignore_parser.parse_gitignore(root_gitignore_path, base_dir=git_repository_dir)
-        except FileNotFoundError:
-            ignore = lambda _: False
-        db.execute("begin;")
+        dependencies.db.execute("begin;")
         # We can actually be sure we visit each file at most once.
         # Also, we don't need O(1) contains checks.
         # So use a list instead of a set.
@@ -399,7 +436,7 @@ def main():
                 deletion_markers.clear()
             elif isinstance(event, Events.Commit):
                 db.commit()
-                faiss.write_index(index, str(index_path))
+                faiss.write_index(index, str(config.index_path))
 
 
 def persist_embeddings(embeddings: T.Iterable[Embedding], db: sqlite3.Connection):
