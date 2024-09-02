@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 import dataclasses
 import hashlib
@@ -20,7 +21,8 @@ from codebased.core import Secrets, EmbeddingsConfig
 from codebased.embeddings import create_openai_embeddings_sync_batched
 from codebased.models import EmbeddingRequest, Embedding, Object
 from codebased.parser import parse_objects, render_object
-from codebased.storage import DatabaseMigrations, deserialize_embedding_data
+from codebased.stats import STATS
+from codebased.storage import DatabaseMigrations, deserialize_embedding_data, serialize_embedding_data
 
 VERSION = "0.0.1"
 
@@ -49,13 +51,17 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 
 
 class Events:
+    FlushEmbeddings = namedtuple('FlushEmbeddings', [])
+    StoreEmbeddings = namedtuple('StoreEmbeddings', ['embeddings'])
     Commit = namedtuple('Commit', [])
     FaissInserts = namedtuple('FaissInserts', ['embeddings'])
     IndexObjects = namedtuple('IndexObjects', ['file_bytes', 'objects'])
-    EmbeddingRequests = namedtuple('EmbeddingRequests', ['requests'])
+    ScheduleEmbeddingRequests = namedtuple('EmbeddingRequests', ['requests'])
     FaissDeletes = namedtuple('FaissDeletes', ['ids'])
     IndexFile = namedtuple('IndexFile', ['path', 'content'])  # tuple[Path, bytes]
-    Directory = namedtuple('DirEnter', ['path'])
+    DeleteFile = namedtuple('DeleteFile', ['path'])
+    DeleteFileObjects = namedtuple('DeleteFile', ['path'])
+    Directory = namedtuple('Directory', ['path'])
     File = namedtuple('File', ['path'])
     DeleteNotVisited = namedtuple('DeleteNotVisited', ['paths'])
 
@@ -88,10 +94,9 @@ def is_utf16(file_bytes: bytes) -> bool:
 def get_request_scheduler(
         oai_client: OpenAI,
         embedding_config: EmbeddingsConfig
-) -> T.Callable[[EmbeddingRequest], T.Iterable[Embedding]]:
+) -> tuple[T.Callable[[EmbeddingRequest], T.Iterable[Embedding]], T.Callable[[], T.Iterable[Embedding]]]:
     batch, batch_tokens = [], 0
-    # TODO: Check token count.
-    batch_size_limit = 256
+    batch_size_limit = 2048
     # Observed through testing.
     batch_token_limit = 400_000
     encoding = tiktoken.encoding_for_model(embedding_config.model)
@@ -108,24 +113,24 @@ def get_request_scheduler(
 
     def schedule_request(req: EmbeddingRequest) -> T.Iterable[Embedding]:
         nonlocal batch, batch_size_limit, batch_tokens
-        batch.append(req)
-        request_tokens = encoding.encode(req.content, disallowed_special=())
-        batch_tokens += len(request_tokens)
-        # This is incorrect.
-        if len(batch) >= batch_size_limit or batch_tokens >= batch_token_limit:
+        request_tokens = len(encoding.encode(req.content, disallowed_special=()))
+        if request_tokens > 8192:
+            return []
+        if len(batch) >= batch_size_limit or batch_tokens + request_tokens > batch_token_limit:
             results = run_requests()
-            batch.clear()
+            batch[:], batch_tokens = [req], request_tokens
             return results
         else:
+            batch.append(req)
+            batch_tokens += request_tokens
             return []
 
-    schedule_request.finish = run_requests
-
-    return schedule_request
+    return schedule_request, run_requests
 
 
 @dataclasses.dataclass
 class Config:
+    flags: Flags
     root: Path
     OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
@@ -140,6 +145,10 @@ class Config:
     def index_path(self) -> Path:
         return self.codebased_directory / 'index.faiss'
 
+    @cached_property
+    def rebuild_faiss_index(self) -> bool:
+        return self.flags.rebuild_faiss_index or not self.index_path.exists()
+
 
 @dataclasses.dataclass
 class Dependencies:
@@ -152,9 +161,8 @@ class Dependencies:
 
     @cached_property
     def index(self) -> faiss.Index:
-        index_path = self.config.index_path
-        if index_path.exists():
-            index = faiss.read_index(str(index_path))
+        if self.config.rebuild_faiss_index:
+            index = faiss.read_index(str(self.config.index_path))
         else:
             index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.config.embeddings.dimensions))
         return index
@@ -181,7 +189,7 @@ def index_paths(
         config: Config,
         paths_to_index: list[Path],
         *,
-        delete_not_visited: bool = False
+        total: bool = True
 ):
     oai_client = dependencies.openai_client
     ignore = dependencies.gitignore
@@ -201,18 +209,22 @@ def index_paths(
         # Add to FAISS after deletes, because SQLite can reuse row ids.
         Events.FaissInserts(embeddings_to_index),
         Events.FaissDeletes(deletion_markers),
-        [Events.Directory(x) if x.is_dir() else Events.File(x) for x in paths_to_index]
+        Events.FlushEmbeddings(),
+        *[Events.Directory(x) if x.is_dir() else Events.File(x) for x in paths_to_index]
     ]
-    if delete_not_visited:
+    if total:
         events.insert(1, Events.DeleteNotVisited(paths_visited))
 
-    embedding_scheduler = get_request_scheduler(oai_client, config.embeddings)
+    embedding_scheduler, flush_embeddings = get_request_scheduler(oai_client, config.embeddings)
 
     try:
         while events:
             event = events.pop()
+            STATS.increment(f"codebased.index.events.{type(event).__name__}.total")
             if isinstance(event, Events.Directory):
                 path = event.path
+                if path == config.root / '.git':
+                    continue
                 for entry in os.scandir(path):
                     entry_path = Path(entry.path)
                     if ignore(entry_path):
@@ -226,7 +238,11 @@ def index_paths(
             elif isinstance(event, Events.File):
                 path = event.path
                 assert isinstance(path, Path)
-                assert path.is_file()
+                if not (path.exists() and path.is_file()):
+                    events.append(Events.DeleteFile(path))
+                    # Need to run this first due to foreign key constraints.
+                    events.append(Events.DeleteFileObjects(path))
+                    continue
                 # TODO: This is hilariously slow.
                 relative_path = path.relative_to(config.root)
                 paths_visited.append(relative_path)
@@ -284,13 +300,22 @@ def index_paths(
                 # https://www.sqlite.org/fasterthanfs.html
                 if previous_sha256_digest == real_sha256_digest:
                     continue
-                # Actually schedule the file.
+                # Actually schedule the file for indexing.
                 events.append(Events.IndexFile(relative_path, file_bytes))
+                # Delete old objects before adding new ones.
+                events.append(Events.DeleteFileObjects(relative_path))
                 continue
-            elif isinstance(event, Events.IndexFile):
-                relative_path, file_bytes = event.path, event.content
+            elif isinstance(event, Events.DeleteFile):
+                relative_path = event.path
                 assert isinstance(relative_path, Path)
-                assert isinstance(file_bytes, bytes)
+                db.execute(
+                    """
+                        delete from file
+                        where path = :path 
+                    """,
+                    {'path': str(relative_path)}
+                )
+            elif isinstance(event, Events.DeleteFileObjects):
                 id_tuples = db.execute(
                     """
                         delete from object 
@@ -301,13 +326,27 @@ def index_paths(
                 ).fetchall()
                 deleted_ids = [x[0] for x in id_tuples]
                 if deleted_ids:
-                    db.executemany(
-                        """
-                                delete from fts where rowid = ?;
+                    in_clause = ', '.join(['?'] * len(deleted_ids))
+                    db.execute(
+                        f"""
+                                delete from fts where rowid = ( {in_clause} );
                         """,
-                        (deleted_ids,)
+                        deleted_ids
                     )
+                    # These are relatively expensive to compute, so keep them around.
+                    # db.execute(
+                    #     f"""
+                    #         delete from embedding
+                    #         where object_id = ( {in_clause} );
+                    #     """,
+                    #     deleted_ids
+                    # )
                 deletion_markers.extend(deleted_ids)
+            elif isinstance(event, Events.IndexFile):
+                relative_path, file_bytes = event.path, event.content
+                assert isinstance(relative_path, Path)
+                assert isinstance(file_bytes, bytes)
+
                 objects = parse_objects(relative_path, file_bytes)
                 objects_by_id: dict[int, Object] = {}
                 for obj in objects:
@@ -349,7 +388,7 @@ def index_paths(
                         content_hash=hashlib.sha256(rendered.encode('utf-8')).hexdigest(),
                     )
                     requests_to_schedule.append(request)
-                events.append(Events.EmbeddingRequests(requests=requests_to_schedule))
+                events.append(Events.ScheduleEmbeddingRequests(requests=requests_to_schedule))
                 db.executemany(
                     """
                         insert into fts
@@ -367,7 +406,7 @@ def index_paths(
                         for obj_id, obj in objects_by_id.items()
                     ]
                 )
-            elif isinstance(event, Events.EmbeddingRequests):
+            elif isinstance(event, Events.ScheduleEmbeddingRequests):
                 requests_to_schedule = event.requests
                 embeddings_batch = []
                 for request in requests_to_schedule:
@@ -379,28 +418,37 @@ def index_paths(
                         {'content_sha256': request.content_hash}
                     ).fetchone()
                     if existing_embedding is not None:
-                        embedding = dataclasses.replace(
-                            Embedding(
-                                object_id=request.object_id,
-                                data=existing_embedding['data'],
-                                content_hash=request.content_hash
-                            )
+                        embedding = Embedding(
+                            object_id=request.object_id,
+                            data=deserialize_embedding_data(existing_embedding['data']),
+                            content_hash=request.content_hash
                         )
                         embeddings_batch.append(embedding)
                     else:
                         embeddings = embedding_scheduler(request)
                         embeddings_batch.extend(embeddings)
+                events.append(Events.StoreEmbeddings(embeddings=embeddings_batch))
+            elif isinstance(event, Events.FlushEmbeddings):
+                results = flush_embeddings()
+                events.append(Events.StoreEmbeddings(embeddings=results))
+            elif isinstance(event, Events.StoreEmbeddings):
+                embeddings_batch = event.embeddings
+                if not embeddings_batch:
+                    continue
                 db.executemany(
                     """
                             insert into embedding
                             (object_id, data, content_sha256)
                             values
                             (:object_id, :data, :content_sha256)
+                            on conflict (object_id) do update 
+                            set data = :data, 
+                                content_sha256 = :content_sha256;
                         """,
                     [
                         {
                             'object_id': e1.object_id,
-                            'data': e1.data,
+                            'data': serialize_embedding_data(e1.data),
                             'content_sha256': e1.content_hash
                         }
                         for e1 in embeddings_batch
@@ -416,15 +464,15 @@ def index_paths(
                     )
                 embeddings_to_index.clear()
             elif isinstance(event, Events.FaissDeletes):
-                deletion_markers = event.ids
-                if deletion_markers:
-                    index.remove_ids(np.array(deletion_markers))
-                deletion_markers.clear()
+                delete_ids = event.ids
+                if delete_ids:
+                    index.remove_ids(np.array(delete_ids))
+                delete_ids.clear()
             elif isinstance(event, Events.Commit):
                 db.commit()
                 faiss.write_index(index, str(config.index_path))
             elif isinstance(event, Events.DeleteNotVisited):
-                inverse_paths = event.paths
+                inverse_paths = [str(path) for path in event.paths]
                 in_clause = ', '.join(['?'] * len(inverse_paths))
                 id_tuples = dependencies.db.execute(
                     f"""
@@ -433,14 +481,7 @@ def index_paths(
                         returning id;
                     """,
                     inverse_paths
-                )
-                deleted_ids = [x[0] for x in id_tuples]
-                dependencies.db.executemany(
-                    f"""
-                        delete from fts where rowid in ( { in_clause} );
-                    """,
-                    deleted_ids
-                )
+                ).fetchall()
                 dependencies.db.execute(
                     f"""
                         delete from file
@@ -448,9 +489,27 @@ def index_paths(
                     """,
                     inverse_paths
                 )
+                deleted_ids = [x[0] for x in id_tuples]
+                in_clause = ', '.join(['?'] * len(deleted_ids))
+                dependencies.db.execute(
+                    f"""
+                        delete from fts where rowid in ( {in_clause} );
+                    """,
+                    deleted_ids
+                )
+            else:
+                raise NotImplementedError(event)
+        else:
+            pass
     except:
         db.rollback()
         raise
+
+
+@dataclasses.dataclass
+class Flags:
+    directory: Path
+    rebuild_faiss_index: bool
 
 
 def main():
@@ -476,12 +535,23 @@ def main():
     # Example: Add an argument to the search command
     search_parser.add_argument(
         '-d', '--directory',
-        help='Specify the directory to start the search from',
+        help='Specify the directory to start the search from.',
         default=Path.cwd(),
         type=Path
     )
 
+    search_parser.add_argument(
+        '--rebuild-faiss-index',
+        help='Rebuild the FAISS index.',
+        action='store_true'
+    )
+
     args = parser.parse_args()
+
+    flags = Flags(
+        directory=args.directory,
+        rebuild_faiss_index=args.rebuild_faiss_index
+    )
 
     if args.command == 'search':
         git_repository_dir = find_root_git_repository(args.directory)
@@ -489,11 +559,21 @@ def main():
             exit_with_error('Codebased must be run within a Git repository.')
         print(f'Found Git repository {git_repository_dir}')
         git_repository_dir: Path = git_repository_dir
-        secrets_ = Secrets.magic()
         embedding_config = EmbeddingsConfig()
-        config = Config(root=git_repository_dir, OPENAI_API_KEY=secrets_.OPENAI_API_KEY, embeddings=embedding_config)
+        config = Config(
+            flags=flags,
+            root=git_repository_dir,
+            OPENAI_API_KEY=Secrets.magic().OPENAI_API_KEY,
+            embeddings=embedding_config
+        )
         dependencies = Dependencies(config=config)
-        index_paths(dependencies, config, [git_repository_dir], delete_not_visited=True)
+        try:
+            assert dependencies.db
+            assert dependencies.index
+            index_paths(dependencies, config, [git_repository_dir], total=True)
+        finally:
+            dependencies.db.close()
+        print(STATS.dumps())
 
 
 if __name__ == '__main__':
