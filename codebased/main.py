@@ -100,7 +100,8 @@ def get_request_scheduler(
     batch_size_limit = 2048
     # Observed through testing.
     batch_token_limit = 400_000
-    encoding = tiktoken.encoding_for_model(embedding_config.model)
+    # Takes about 200ms to initialize, so do it lazily + once.
+    encoding: tiktoken.Encoding | None = None
 
     def run_requests() -> T.Iterable[Embedding]:
         nonlocal batch
@@ -113,7 +114,9 @@ def get_request_scheduler(
         )
 
     def schedule_request(req: EmbeddingRequest) -> T.Iterable[Embedding]:
-        nonlocal batch, batch_size_limit, batch_tokens
+        nonlocal batch, batch_size_limit, batch_tokens, encoding
+        if encoding is None:
+            encoding = tiktoken.encoding_for_model(embedding_config.model)
         request_tokens = len(encoding.encode(req.content, disallowed_special=()))
         if request_tokens > 8192:
             return []
@@ -194,7 +197,7 @@ class Dependencies:
 
 
 class FileExceptions:
-    class Skip(Exception):
+    class AlreadyIndexed(Exception):
         """
         File has already been indexed.
         """
@@ -294,11 +297,14 @@ def index_paths(
                     if result is not None:
                         size, last_modified, previous_sha256_digest = result
                         if stat.st_size == size and stat.st_mtime == last_modified:
-                            raise FileExceptions.Skip()
+                            raise FileExceptions.AlreadyIndexed()
                     else:
                         previous_sha256_digest = None
 
-                    file_bytes = path.read_bytes()
+                    try:
+                        file_bytes = path.read_bytes()
+                    except FileNotFoundError:
+                        raise FileExceptions.Delete()
                     # Ignore binary files.
                     if is_binary(file_bytes):
                         raise FileExceptions.Ignore()
@@ -330,7 +336,7 @@ def index_paths(
                     # Do this after updating the DB, because a write to SQLite is cheaper than reading a file.
                     # https://www.sqlite.org/fasterthanfs.html
                     if previous_sha256_digest == real_sha256_digest:
-                        raise FileExceptions.Skip()
+                        raise FileExceptions.AlreadyIndexed()
                     # Actually schedule the file for indexing.
                     events.append(Events.IndexFile(relative_path, file_bytes))
                     # Delete old objects before adding new ones.
@@ -341,7 +347,7 @@ def index_paths(
                     # Need to run this first due to foreign key constraints.
                     events.append(Events.DeleteFileObjects(path))
                     continue
-                except FileExceptions.Skip:
+                except FileExceptions.AlreadyIndexed:
                     if rebuilding_faiss_index:
                         events.append(Events.ReloadFileEmbeddings(relative_path))
                     continue
