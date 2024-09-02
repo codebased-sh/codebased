@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import hashlib
 import json
 import os
@@ -18,7 +19,7 @@ from codebased.core import Secrets, EmbeddingsConfig
 from codebased.embeddings import create_openai_embeddings_sync_batched
 from codebased.models import EmbeddingRequest, Embedding, Object
 from codebased.parser import parse_objects, render_object
-from codebased.storage import DatabaseMigrations
+from codebased.storage import DatabaseMigrations, deserialize_embedding_data
 
 VERSION = "0.0.1"
 
@@ -47,8 +48,11 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 
 
 class Events:
+    Commit = namedtuple('Commit', [])
+    FaissInserts = namedtuple('FaissInserts', ['embeddings'])
     IndexObjects = namedtuple('IndexObjects', ['file_bytes', 'objects'])
-    HandleDeletes = namedtuple('HandleDeletes', ['ids'])
+    EmbeddingRequests = namedtuple('EmbeddingRequests', ['requests'])
+    FaissDeletes = namedtuple('FaissDeletes', ['ids'])
     IndexFile = namedtuple('IndexFile', ['path', 'content'])  # tuple[Path, bytes]
     Directory = namedtuple('DirEnter', ['path'])
     File = namedtuple('File', ['path'])
@@ -184,9 +188,13 @@ def main():
         # Also, we don't need O(1) contains checks.
         # So use a list instead of a set.
         # May be useful to see what the traversal order was too.
+        embeddings_to_persist: list[Embedding] = []
         deletion_markers = []
         events = [
-            Events.HandleDeletes(deletion_markers),
+            Events.Commit(),
+            # Add to FAISS after deletes, because SQLite can reuse row ids.
+            Events.FaissInserts(embeddings_to_persist),
+            Events.FaissDeletes(deletion_markers),
             Events.Directory(git_repository_dir)
         ]
         paths_visited = []
@@ -217,7 +225,12 @@ def main():
 
                 result = db.execute(
                     """
-                        select size_bytes, last_modified_ns, sha256_digest from file where path = :path;
+                        select 
+                            size_bytes, 
+                            last_modified_ns, 
+                            sha256_digest 
+                        from file 
+                        where path = :path;
                     """,
                     (str(relative_path),)
                 ).fetchone()
@@ -278,7 +291,15 @@ def main():
                     """,
                     {'path': str(relative_path)}
                 ).fetchall()
-                deletion_markers.extend([x[0] for x in id_tuples])
+                deleted_ids = [x[0] for x in id_tuples]
+                if deleted_ids:
+                    db.executemany(
+                        """
+                                delete from fts where rowid = ?;
+                        """,
+                        (deleted_ids,)
+                    )
+                deletion_markers.extend(deleted_ids)
                 objects = parse_objects(relative_path, file_bytes)
                 objects_by_id: dict[int, Object] = {}
                 for obj in objects:
@@ -311,36 +332,93 @@ def main():
                 assert isinstance(objects_by_id, dict)
                 # vector stuff!
                 lines = file_bytes.split(b'\n')
+                requests_to_schedule = []
                 for obj_id, obj in objects_by_id.items():
                     rendered = render_object(obj, in_lines=lines)
                     request = EmbeddingRequest(
                         object_id=obj_id,
                         content=rendered,
-                        content_hash=hashlib.sha1(rendered.encode('utf-8')).hexdigest(),
+                        content_hash=hashlib.sha256(rendered.encode('utf-8')).hexdigest(),
                     )
-                    embeddings = embedding_scheduler(request)
-                    db.executemany(
+                    requests_to_schedule.append(request)
+                events.append(Events.EmbeddingRequests(requests=requests_to_schedule))
+                db.executemany(
+                    """
+                        insert into fts
+                        (rowid, path, name, content)
+                        values
+                        (:object_id, :path, :name, :content);
+                    """,
+                    [
+                        {
+                            'object_id': obj_id,
+                            'path': str(obj.path),
+                            'name': obj.name,
+                            'content': file_bytes[obj.byte_range[0]:obj.byte_range[1]]
+                        }
+                        for obj_id, obj in objects_by_id.items()
+                    ]
+                )
+            elif isinstance(event, Events.EmbeddingRequests):
+                requests_to_schedule = event.requests
+                embeddings_batch = []
+                for request in requests_to_schedule:
+                    existing_embedding = db.execute(
                         """
-                            insert into embedding
-                            (object_id, embedding, content_sha_256)
-                            values
-                            (:object_id, :embedding, :content_sha_256)
+                            select data from embedding 
+                            where content_sha256 = :content_sha256;
                         """,
-                        [
-                            {
-                                'object_id': obj_id,
-                                'embedding': e.data,
-                                'content_sha_256': e.content_hash
-                            }
-                            for e in embeddings
-                        ]
-                    )
-                    if embeddings:
-                        index.add_with_ids(
-                            np.array([e.data for e in embeddings]),
-                            [e.object_id for e in embeddings]
+                        {'content_sha256': request.content_hash}
+                    ).fetchone()
+                    if existing_embedding is not None:
+                        embedding = dataclasses.replace(
+                            Embedding(
+                                object_id=request.object_id,
+                                data=existing_embedding['data'],
+                                content_hash=request.content_hash
+                            )
                         )
+                        embeddings_batch.append(embedding)
+                    else:
+                        embeddings = embedding_scheduler(request)
+                        embeddings_batch.extend(embeddings)
+                persist_embeddings(embeddings_batch, db)
+                embeddings_to_persist.extend(embeddings_batch)
+            elif isinstance(event, Events.FaissInserts):
+                embeddings_to_persist = event.embeddings
+                if embeddings_to_persist:
+                    index.add_with_ids(
+                        np.array([e.data for e in embeddings_to_persist]),
+                        [e.object_id for e in embeddings_to_persist]
+                    )
+                embeddings_to_persist.clear()
+            elif isinstance(event, Events.FaissDeletes):
+                deletion_markers = event.ids
+                if deletion_markers:
+                    index.remove_ids(np.array(deletion_markers))
+                deletion_markers.clear()
+            elif isinstance(event, Events.Commit):
+                db.commit()
+                faiss.write_index(index, str(index_path))
 
+
+def persist_embeddings(embeddings: T.Iterable[Embedding], db: sqlite3.Connection):
+    db.executemany(
+        """
+            insert into embedding
+            (object_id, data, content_sha256)
+            values
+            (:object_id, :data, :content_sha256)
+        """,
+        [
+            {
+                'object_id': e.object_id,
+                'data': e.data,
+                'content_sha256': e.content_hash
+            }
+            for e in embeddings
+        ]
+    )
 
 
 if __name__ == '__main__':

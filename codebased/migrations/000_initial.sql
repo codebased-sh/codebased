@@ -26,9 +26,12 @@ create table object
 create table embedding
 (
     object_id       integer primary key,
-    embedding       blob,
-    content_sha_256 blob,
+    data       blob,
+    content_sha256 blob,
     foreign key (object_id) references object (id)
 );
 
-create index embedding_content_sha_256_index on embedding (content_sha_256);
+create index embedding_content_sha256_index on embedding (content_sha256);
+
+-- rowid is object id
+create virtual table fts using fts5(path, name, content, content='', contentless_delete=1, tokenize="trigram");

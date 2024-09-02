@@ -204,7 +204,7 @@ class TestCli(unittest.TestCase):
             assert (path / '.codebased').exists()
             assert (path / '.codebased' / 'codebased.db').exists()
             # TODO: Check index is saved
-            # assert (path / '.codebased' / 'index.faiss').exists()
+            assert (path / '.codebased' / 'index.faiss').exists()
             check_codebased_cli(
                 cwd=path / 'a-directory',
                 exit_code=exit_code,
@@ -212,6 +212,8 @@ class TestCli(unittest.TestCase):
                 stdout=stdout,
                 args=['search']
             )
+            assert (path / '.codebased' / 'codebased.db').exists()
+            assert (path / '.codebased' / 'index.faiss').exists()
 
     def test_version(self):
         with tempfile.TemporaryDirectory() as tempdir:
