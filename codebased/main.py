@@ -16,7 +16,7 @@ from openai import OpenAI
 
 from codebased.core import Secrets, EmbeddingsConfig
 from codebased.embeddings import create_openai_embeddings_sync_batched
-from codebased.models import EmbeddingRequest, Embedding
+from codebased.models import EmbeddingRequest, Embedding, Object
 from codebased.parser import parse_objects, render_object
 from codebased.storage import DatabaseMigrations
 
@@ -88,7 +88,7 @@ def get_request_scheduler(
     batch_size_limit = 256
     # Observed through testing.
     batch_token_limit = 400_000
-    embedding_model_encoding = tiktoken.encoding_for_model(embedding_config.model)
+    encoding = tiktoken.encoding_for_model(embedding_config.model)
 
     def run_requests() -> T.Iterable[Embedding]:
         nonlocal batch
@@ -103,8 +103,10 @@ def get_request_scheduler(
     def schedule_request(req: EmbeddingRequest) -> T.Iterable[Embedding]:
         nonlocal batch, batch_size_limit, batch_tokens
         batch.append(req)
-        batch_tokens += req.content
-        if len(batch) >= batch_size_limit:
+        request_tokens = encoding.encode(req.content, disallowed_special=())
+        batch_tokens += len(request_tokens)
+        # This is incorrect.
+        if len(batch) >= batch_size_limit or batch_tokens >= batch_token_limit:
             results = run_requests()
             batch.clear()
             return results
@@ -278,16 +280,16 @@ def main():
                 ).fetchall()
                 deletion_markers.extend([x[0] for x in id_tuples])
                 objects = parse_objects(relative_path, file_bytes)
-
-                new_id_tuples = db.executemany(
-                    """
-                       insert into object
-                       (path, name, language, context_before, context_after, kind, byte_range, coordinates)
-                       values
-                       (:path, :name, :language, :context_before, :context_after, :kind, :byte_range, :coordinates)
-                       returning id;
-                    """,
-                    [
+                objects_by_id: dict[int, Object] = {}
+                for obj in objects:
+                    object_id, = db.execute(
+                        """
+                           insert into object
+                           (path, name, language, context_before, context_after, kind, byte_range, coordinates)
+                           values
+                           (:path, :name, :language, :context_before, :context_after, :kind, :byte_range, :coordinates)
+                           returning id;
+                        """,
                         {
                             'path': str(obj.path),
                             'name': obj.name,
@@ -298,17 +300,15 @@ def main():
                             'byte_range': json.dumps(obj.byte_range),
                             'coordinates': json.dumps(obj.coordinates)
                         }
-                        for obj in objects
-                    ]
-                ).fetchall()
-                objects_by_id = {id_tuple[0]: obj for id_tuple, obj in zip(new_id_tuples, objects)}
+
+                    ).fetchone()
+                    objects_by_id[object_id] = obj
                 events.append(Events.IndexObjects(file_bytes, objects_by_id))
             elif isinstance(event, Events.IndexObjects):
                 file_bytes = event.file_bytes
                 objects_by_id = event.objects
                 # dict[int, Object]
                 assert isinstance(objects_by_id, dict)
-                batch_requests = []
                 # vector stuff!
                 lines = file_bytes.split(b'\n')
                 for obj_id, obj in objects_by_id.items():
@@ -319,11 +319,28 @@ def main():
                         content_hash=hashlib.sha1(rendered.encode('utf-8')).hexdigest(),
                     )
                     embeddings = embedding_scheduler(request)
+                    db.executemany(
+                        """
+                            insert into embedding
+                            (object_id, embedding, content_sha_256)
+                            values
+                            (:object_id, :embedding, :content_sha_256)
+                        """,
+                        [
+                            {
+                                'object_id': obj_id,
+                                'embedding': e.data,
+                                'content_sha_256': e.content_hash
+                            }
+                            for e in embeddings
+                        ]
+                    )
                     if embeddings:
                         index.add_with_ids(
                             np.array([e.data for e in embeddings]),
                             [e.object_id for e in embeddings]
                         )
+
 
 
 if __name__ == '__main__':

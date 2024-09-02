@@ -22,3 +22,13 @@ create table object
     coordinates    text,
     foreign key (path) references file (path)
 );
+
+create table embedding
+(
+    object_id       integer primary key,
+    embedding       blob,
+    content_sha_256 blob,
+    foreign key (object_id) references object (id)
+);
+
+create index embedding_content_sha_256_index on embedding (content_sha_256);

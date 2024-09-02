@@ -187,9 +187,7 @@ class TestCli(unittest.TestCase):
                 args=['search']
             )
 
-    def test_run_inside_a_git_repository(
-            self
-    ):
+    def test_run_inside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO, path)
