@@ -143,8 +143,8 @@ def check_codebased_cli(
         *,
         cwd: Path,
         exit_code: int,
-        stderr: bytes | re.Pattern,
-        stdout: bytes | re.Pattern,
+        stderr: bytes | re.Pattern | None,
+        stdout: bytes | re.Pattern | None,
         args: list[str]
 ):
     proc = subprocess.run(
@@ -157,11 +157,11 @@ def check_codebased_cli(
     assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {proc.stdout}, stderr: {proc.stderr}'
     if isinstance(stdout, bytes):
         assert proc.stdout == stdout, f'{proc.stdout} != {stdout}'
-    else:
+    elif isinstance(stdout, re.Pattern):
         assert stdout.match(proc.stdout), proc.stdout
     if isinstance(stderr, bytes):
         assert proc.stderr == stderr, f'{proc.stderr} != {stderr}'
-    else:
+    elif isinstance(stderr, re.Pattern):
         assert stderr.match(proc.stderr), proc.stderr
 
 

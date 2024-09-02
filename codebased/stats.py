@@ -55,10 +55,12 @@ class Stats:
         lines = [f"Counters:"]
         for key, value in self.counters.items():
             lines.append(f"  {key}: {value}")
-        lines.append(f"Ratios:")
+        ratio_lines = [f"Ratios:"]
         for key, (num, denom) in self.ratios.items():
             if denom > 0:
-                lines.append(f"  {key}: {num / denom:.3f}")
+                ratio_lines.append(f"  {key}: {num / denom:.3f}")
+        if len(ratio_lines) > 1:
+            lines.extend(ratio_lines)
         return '\n'.join(lines)
 
 

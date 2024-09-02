@@ -590,6 +590,7 @@ class Flags:
     rebuild_faiss_index: bool
     cached_only: bool
     query: str
+    stats: bool
 
 
 def main():
@@ -639,6 +640,11 @@ def main():
         help='Reindex in the background.',
         action='store_true'
     )
+    search_parser.add_argument(
+        '--stats',
+        help='Print stats.',
+        action='store_true'
+    )
 
     args = parser.parse_args()
 
@@ -647,16 +653,18 @@ def main():
         rebuild_faiss_index=args.rebuild_faiss_index,
         cached_only=args.cached_only,
         query=args.query,
-        background=args.background
+        background=args.background,
+        stats=args.stats
     )
+    embedding_config = EmbeddingsConfig()
+    config = Config(
+        flags=flags,
+        embeddings=embedding_config,
+        OPENAI_API_KEY=Secrets.magic().OPENAI_API_KEY,
+    )
+    __ = config.root
 
     if args.command == 'search':
-        embedding_config = EmbeddingsConfig()
-        config = Config(
-            flags=flags,
-            embeddings=embedding_config,
-            OPENAI_API_KEY=Secrets.magic().OPENAI_API_KEY,
-        )
         dependencies = Dependencies(config=config)
         try:
             assert dependencies.db
@@ -665,6 +673,7 @@ def main():
                 index_paths(dependencies, config, [config.root], total=True)
         finally:
             dependencies.db.close()
+    if flags.stats:
         print(STATS.dumps())
 
 
