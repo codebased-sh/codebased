@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Union
+
 from codebased.main import find_root_git_repository, VERSION
 
 SUBMODULE_REPO = (Path('.'), (
@@ -139,12 +141,15 @@ class TestGitDetection(unittest.TestCase):
             assert find_root_git_repository(root) is None
 
 
+StreamAssertion = Union[bytes, re.Pattern, None]
+
+
 def check_codebased_cli(
         *,
         cwd: Path,
         exit_code: int,
-        stderr: bytes | re.Pattern | None,
-        stdout: bytes | re.Pattern | None,
+        stderr: StreamAssertion,
+        stdout: StreamAssertion,
         args: list[str]
 ):
     proc = subprocess.run(
@@ -163,6 +168,31 @@ def check_codebased_cli(
         assert proc.stderr == stderr, f'{proc.stderr} != {stderr}'
     elif isinstance(stderr, re.Pattern):
         assert stderr.match(proc.stderr), proc.stderr
+
+
+def check_search_command(
+        *,
+        args: list[str],
+        root: Path,
+        cwd: Path,
+        exit_code: int,
+        stderr: StreamAssertion,
+        stdout: StreamAssertion
+):
+    # working directory
+    # root directory
+    check_codebased_cli(
+        cwd=cwd,
+        exit_code=exit_code,
+        stderr=stderr,
+        stdout=stdout,
+        args=args
+    )
+    assert (root / '.codebased').exists()
+    assert (root / '.codebased').exists()
+    assert (root / '.codebased' / 'codebased.db').exists()
+    # TODO: Check index is saved
+    assert (root / '.codebased' / 'index.faiss').exists()
 
 
 class TestCli(unittest.TestCase):
@@ -188,26 +218,22 @@ class TestCli(unittest.TestCase):
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
-            check_codebased_cli(
+            check_search_command(
+                args=['search'],
+                root=path,
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
-                stdout=stdout,
-                args=['search']
+                stdout=stdout
             )
-            assert (path / '.codebased').exists()
-            assert (path / '.codebased' / 'codebased.db').exists()
-            # TODO: Check index is saved
-            assert (path / '.codebased' / 'index.faiss').exists()
-            check_codebased_cli(
+            check_search_command(
+                args=['search'],
+                root=path,
                 cwd=path / 'a-directory',
                 exit_code=exit_code,
                 stderr=stderr,
-                stdout=stdout,
-                args=['search']
+                stdout=stdout
             )
-            assert (path / '.codebased' / 'codebased.db').exists()
-            assert (path / '.codebased' / 'index.faiss').exists()
 
     def test_delete_files_between_runs(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -216,28 +242,25 @@ class TestCli(unittest.TestCase):
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
-            check_codebased_cli(
+            search_args = ['search']
+            check_search_command(
+                args=search_args,
+                root=path,
                 cwd=path,
                 exit_code=exit_code,
-                stderr=stderr,
                 stdout=stdout,
-                args=['search']
+                stderr=stderr,
             )
-            assert (path / '.codebased').exists()
-            assert (path / '.codebased' / 'codebased.db').exists()
-            # TODO: Check index is saved
-            assert (path / '.codebased' / 'index.faiss').exists()
             codepy_file = path / 'a-directory' / 'code.py'
             os.remove(codepy_file)
-            check_codebased_cli(
+            check_search_command(
+                args=search_args,
+                root=path,
                 cwd=path,
                 exit_code=exit_code,
-                stderr=stderr,
                 stdout=stdout,
-                args=['search']
+                stderr=stderr
             )
-            assert (path / '.codebased' / 'codebased.db').exists()
-            assert (path / '.codebased' / 'index.faiss').exists()
 
     def test_version(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -278,8 +301,9 @@ class TestCli(unittest.TestCase):
             # Test with -d argument
             workdir = Path.cwd()
             assert workdir != path
-            check_codebased_cli(
+            check_search_command(
                 cwd=workdir,
+                root=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
@@ -287,7 +311,8 @@ class TestCli(unittest.TestCase):
             )
 
             # Test with --directory argument
-            check_codebased_cli(
+            check_search_command(
+                root=path,
                 cwd=workdir,
                 exit_code=exit_code,
                 stderr=stderr,
@@ -304,10 +329,11 @@ class TestCli(unittest.TestCase):
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
-            check_codebased_cli(
+            check_search_command(
+                args=['search'],
+                root=path,
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['search']
             )
