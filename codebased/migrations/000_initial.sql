@@ -23,6 +23,8 @@ create table object
     foreign key (path) references file (path)
 );
 
+create index object_path_index on object (path);
+
 create table embedding
 (
     object_id       integer primary key,

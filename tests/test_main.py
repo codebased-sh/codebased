@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -200,6 +201,36 @@ class TestCli(unittest.TestCase):
             assert (path / '.codebased' / 'index.faiss').exists()
             check_codebased_cli(
                 cwd=path / 'a-directory',
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search']
+            )
+            assert (path / '.codebased' / 'codebased.db').exists()
+            assert (path / '.codebased' / 'index.faiss').exists()
+
+    def test_delete_files_between_runs(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            check_codebased_cli(
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search']
+            )
+            assert (path / '.codebased').exists()
+            assert (path / '.codebased' / 'codebased.db').exists()
+            # TODO: Check index is saved
+            assert (path / '.codebased' / 'index.faiss').exists()
+            codepy_file = path / 'a-directory' / 'code.py'
+            os.remove(codepy_file)
+            check_codebased_cli(
+                cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,

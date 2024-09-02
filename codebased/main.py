@@ -57,6 +57,7 @@ class Events:
     IndexFile = namedtuple('IndexFile', ['path', 'content'])  # tuple[Path, bytes]
     Directory = namedtuple('DirEnter', ['path'])
     File = namedtuple('File', ['path'])
+    DeleteNotVisited = namedtuple('DeleteNotVisited', ['paths'])
 
 
 def is_binary(file_bytes: bytes) -> bool:
@@ -175,7 +176,13 @@ class Dependencies:
             return lambda _: False
 
 
-def event_loop(dependencies: Dependencies, config: Config, paths_to_index: list[Path]):
+def index_paths(
+        dependencies: Dependencies,
+        config: Config,
+        paths_to_index: list[Path],
+        *,
+        delete_not_visited: bool = False
+):
     oai_client = dependencies.openai_client
     ignore = dependencies.gitignore
     db = dependencies.db
@@ -188,6 +195,7 @@ def event_loop(dependencies: Dependencies, config: Config, paths_to_index: list[
     # May be useful to see what the traversal order was too.
     embeddings_to_index: list[Embedding] = []
     deletion_markers = []
+    paths_visited = []
     events = [
         Events.Commit(),
         # Add to FAISS after deletes, because SQLite can reuse row ids.
@@ -195,7 +203,8 @@ def event_loop(dependencies: Dependencies, config: Config, paths_to_index: list[
         Events.FaissDeletes(deletion_markers),
         [Events.Directory(x) if x.is_dir() else Events.File(x) for x in paths_to_index]
     ]
-    paths_visited = []
+    if delete_not_visited:
+        events.insert(1, Events.DeleteNotVisited(paths_visited))
 
     embedding_scheduler = get_request_scheduler(oai_client, config.embeddings)
 
@@ -414,6 +423,31 @@ def event_loop(dependencies: Dependencies, config: Config, paths_to_index: list[
             elif isinstance(event, Events.Commit):
                 db.commit()
                 faiss.write_index(index, str(config.index_path))
+            elif isinstance(event, Events.DeleteNotVisited):
+                inverse_paths = event.paths
+                in_clause = ', '.join(['?'] * len(inverse_paths))
+                id_tuples = dependencies.db.execute(
+                    f"""
+                        delete from object
+                        where path not in ({in_clause})
+                        returning id;
+                    """,
+                    inverse_paths
+                )
+                deleted_ids = [x[0] for x in id_tuples]
+                dependencies.db.executemany(
+                    f"""
+                        delete from fts where rowid in ( { in_clause} );
+                    """,
+                    deleted_ids
+                )
+                dependencies.db.execute(
+                    f"""
+                        delete from file
+                        where path not in ( {in_clause} );
+                    """,
+                    inverse_paths
+                )
     except:
         db.rollback()
         raise
@@ -459,7 +493,7 @@ def main():
         embedding_config = EmbeddingsConfig()
         config = Config(root=git_repository_dir, OPENAI_API_KEY=secrets_.OPENAI_API_KEY, embeddings=embedding_config)
         dependencies = Dependencies(config=config)
-        event_loop(dependencies, config, [git_repository_dir])
+        index_paths(dependencies, config, [git_repository_dir], delete_not_visited=True)
 
 
 if __name__ == '__main__':
