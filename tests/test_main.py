@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
+import sqlite3
 import subprocess
 import tempfile
+import typing as T
 import unittest
 from pathlib import Path
 from typing import Union
 
+import faiss
+
 from codebased.main import find_root_git_repository, VERSION
 
-SUBMODULE_REPO = (Path('.'), (
+SUBMODULE_REPO_TREE = (Path('.'), (
     (Path('README.md'), b'Hello, world!'),
     (Path('.git'), ()),
     (Path('submodule'), (
@@ -32,9 +37,9 @@ SUBMODULE_REPO = (Path('.'), (
         ), b'')
     ))
 )
-                  )
+                       )
 
-SIMPLE_NOT_REPO = (
+SIMPLE_NOT_REPO_TREE = (
     Path('.'),
     (
         (Path('README.md'), b'Hello, world!'),
@@ -44,7 +49,7 @@ SIMPLE_NOT_REPO = (
     )
 )
 
-SIMPLE_REPO = (
+SIMPLE_REPO_TREE = (
     Path(
         '.'
     ),
@@ -64,6 +69,19 @@ SIMPLE_REPO = (
         ), ()),
     )
 )
+
+
+@dataclasses.dataclass
+class CliTestCase:
+    tree: T.Any
+    objects: int
+    files: int
+
+    def create(self, path: Path):
+        create_tree(self.tree, path)
+
+
+SIMPLE_REPO_TEST_CASE = CliTestCase(tree=SIMPLE_REPO_TREE, objects=2, files=2)
 
 
 # Algebraically:
@@ -86,7 +104,7 @@ class TestGitDetection(unittest.TestCase):
     def test_in_a_regular_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_REPO, path)
+            create_tree(SIMPLE_REPO_TREE, path)
             test_paths = [
                 path,
                 path / 'a-directory',
@@ -102,7 +120,7 @@ class TestGitDetection(unittest.TestCase):
     def test_in_a_git_repository_with_submodules(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SUBMODULE_REPO, path)
+            create_tree(SUBMODULE_REPO_TREE, path)
             test_paths = [
                 path,
                 path / 'submodule',
@@ -118,7 +136,7 @@ class TestGitDetection(unittest.TestCase):
     def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_NOT_REPO, path)
+            create_tree(SIMPLE_NOT_REPO_TREE, path)
             test_paths = [
                 path / 'a-directory',
                 path / 'a-directory' / 'code.py',
@@ -177,7 +195,9 @@ def check_search_command(
         cwd: Path,
         exit_code: int,
         stderr: StreamAssertion,
-        stdout: StreamAssertion
+        stdout: StreamAssertion,
+        expected_object_count: int | None = None,
+        expected_file_count: int | None = None
 ):
     # working directory
     # root directory
@@ -188,18 +208,51 @@ def check_search_command(
         stdout=stdout,
         args=args
     )
-    assert (root / '.codebased').exists()
-    assert (root / '.codebased').exists()
-    assert (root / '.codebased' / 'codebased.db').exists()
-    # TODO: Check index is saved
-    assert (root / '.codebased' / 'index.faiss').exists()
+    codebased_dir = root / '.codebased'
+    assert codebased_dir.exists()
+    check_db(
+        codebased_dir / 'codebased.db',
+        expected_object_count=expected_object_count,
+        expected_file_count=expected_file_count
+    )
+    check_faiss_index(
+        codebased_dir / 'index.faiss',
+        expected_object_count=expected_object_count
+    )
+
+
+def check_faiss_index(path: Path, *, expected_object_count: int | None):
+    assert path.exists()
+    if expected_object_count is not None:
+        faiss_index = faiss.read_index(str(path))
+        assert faiss_index.id_map.size() == expected_object_count
+
+
+def check_db(
+        db_path: Path,
+        *,
+        expected_object_count: int | None,
+        expected_file_count: int | None
+):
+    assert db_path.exists()
+    with sqlite3.connect(db_path) as db:
+        if expected_object_count is not None:
+            cursor = db.execute('select count(*) from object')
+            assert cursor.fetchone()[0] == expected_object_count
+            cursor = db.execute('select count(*) from fts')
+            assert cursor.fetchone()[0] == expected_object_count
+            cursor = db.execute('select count(*) from embedding where object_id in (select id from object)')
+            assert cursor.fetchone()[0] == expected_object_count
+        if expected_file_count is not None:
+            cursor = db.execute('select count(*) from file')
+            assert cursor.fetchone()[0] == expected_file_count
 
 
 class TestCli(unittest.TestCase):
     def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_NOT_REPO, path)
+            create_tree(SIMPLE_NOT_REPO_TREE, path)
             exit_code = 1
             stdout = b''
             stderr = b'Codebased must be run within a Git repository.\n'
@@ -214,7 +267,8 @@ class TestCli(unittest.TestCase):
     def test_run_inside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_REPO, path)
+            # Simple repo has two files.
+            SIMPLE_REPO_TEST_CASE.create(path)
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
@@ -224,7 +278,9 @@ class TestCli(unittest.TestCase):
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
-                stdout=stdout
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
             check_search_command(
                 args=['search'],
@@ -232,13 +288,15 @@ class TestCli(unittest.TestCase):
                 cwd=path / 'a-directory',
                 exit_code=exit_code,
                 stderr=stderr,
-                stdout=stdout
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
 
     def test_delete_files_between_runs(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_REPO, path)
+            create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
@@ -250,16 +308,20 @@ class TestCli(unittest.TestCase):
                 exit_code=exit_code,
                 stdout=stdout,
                 stderr=stderr,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
-            codepy_file = path / 'a-directory' / 'code.py'
-            os.remove(codepy_file)
+            code_dot_py_path = path / 'a-directory' / 'code.py'
+            os.remove(code_dot_py_path)
             check_search_command(
                 args=search_args,
                 root=path,
                 cwd=path,
                 exit_code=exit_code,
                 stdout=stdout,
-                stderr=stderr
+                stderr=stderr,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files - 1,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects - 1
             )
 
     def test_version(self):
@@ -293,7 +355,7 @@ class TestCli(unittest.TestCase):
     def test_directory_argument(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_REPO, path)
+            create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
             stderr = b''
@@ -307,7 +369,9 @@ class TestCli(unittest.TestCase):
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['search', '-d', str(path)]
+                args=['search', '-d', str(path)],
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
 
             # Test with --directory argument
@@ -317,13 +381,15 @@ class TestCli(unittest.TestCase):
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['search', '--directory', str(path)]
+                args=['search', '--directory', str(path)],
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
 
     def test_with_gitignore(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(SIMPLE_REPO, path)
+            create_tree(SIMPLE_REPO_TREE, path)
             gitignore_path = path / '.gitignore'
             gitignore_path.write_text('*.py\n')
             exit_code = 0
@@ -336,4 +402,8 @@ class TestCli(unittest.TestCase):
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
+                # +1 for the gitignore file
+                # -1 for the .py file because it's ignored
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files - 1 + 1,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects - 1 + 1
             )

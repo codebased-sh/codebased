@@ -252,7 +252,7 @@ def index_paths(
         *[Events.Directory(x) if x.is_dir() else Events.File(x) for x in paths_to_index]
     ]
     if total:
-        events.insert(1, Events.DeleteNotVisited(paths_visited))
+        events.insert(3, Events.DeleteNotVisited(paths_visited))
 
     try:
         while events:
@@ -260,7 +260,7 @@ def index_paths(
             STATS.increment(f"codebased.index.events.{type(event).__name__}.total")
             if isinstance(event, Events.Directory):
                 path = event.path
-                if path == config.root / '.git':
+                if path == config.root / '.git' or path == config.root / '.codebased':
                     continue
                 for entry in os.scandir(path):
                     entry_path = Path(entry.path)
@@ -573,6 +573,7 @@ def index_paths(
                     """,
                     deleted_ids
                 )
+                deletion_markers.extend(deleted_ids)
             else:
                 raise NotImplementedError(event)
         else:
