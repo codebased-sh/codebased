@@ -64,6 +64,7 @@ class Events:
     Directory = namedtuple('Directory', ['path'])
     File = namedtuple('File', ['path'])
     DeleteNotVisited = namedtuple('DeleteNotVisited', ['paths'])
+    ReloadFileEmbeddings = namedtuple('ReloadFileEmbeddings', ['path'])
 
 
 def is_binary(file_bytes: bytes) -> bool:
@@ -184,6 +185,26 @@ class Dependencies:
             return lambda _: False
 
 
+class FileExceptions:
+    class Skip(Exception):
+        """
+        File has already been indexed.
+        """
+        pass
+
+    class Ignore(Exception):
+        """
+        File cannot be indexed because it's binary or not UTF-8 / UTF-16.
+        """
+        pass
+
+    class Delete(Exception):
+        """
+        File should be deleted.
+        """
+        pass
+
+
 def index_paths(
         dependencies: Dependencies,
         config: Config,
@@ -195,6 +216,10 @@ def index_paths(
     ignore = dependencies.gitignore
     db = dependencies.db
     index = dependencies.index
+
+    rebuilding_faiss_index = config.rebuild_faiss_index
+    if total:
+        rebuilding_faiss_index = False
 
     dependencies.db.execute("begin;")
     # We can actually be sure we visit each file at most once.
@@ -238,73 +263,109 @@ def index_paths(
             elif isinstance(event, Events.File):
                 path = event.path
                 assert isinstance(path, Path)
-                if not (path.exists() and path.is_file()):
+                try:
+                    if not (path.exists() and path.is_file()):
+                        raise FileExceptions.Delete()
+                    # TODO: This is hilariously slow.
+                    relative_path = path.relative_to(config.root)
+                    paths_visited.append(relative_path)
+
+                    result = db.execute(
+                        """
+                            select
+                                size_bytes, 
+                                last_modified_ns, 
+                                sha256_digest 
+                            from file 
+                            where path = :path;
+                        """,
+                        (str(relative_path),)
+                    ).fetchone()
+
+                    stat = path.stat()
+                    if result is not None:
+                        size, last_modified, previous_sha256_digest = result
+                        if stat.st_size == size and stat.st_mtime == last_modified:
+                            raise FileExceptions.Skip()
+                    else:
+                        previous_sha256_digest = None
+
+                    file_bytes = path.read_bytes()
+                    # Ignore binary files.
+                    if is_binary(file_bytes):
+                        raise FileExceptions.Ignore()
+                    # TODO: See how long this takes on large repos.
+                    # TODO: We might want to memoize the "skip" results if this is an issue.
+                    if not (is_utf8(file_bytes) or is_utf16(file_bytes)):
+                        raise FileExceptions.Ignore()
+                    real_sha256_digest = hashlib.sha256(file_bytes).digest()
+                    # TODO: To support incremental indexing, i.e. allowing this loop to make progress if interrupted
+                    #  we would need to wait until the objects, embeddings, FTS index, etc. are computed to insert.
+                    db.execute(
+                        """
+                            insert into file 
+                                (path, size_bytes, last_modified_ns, sha256_digest)
+                                 values 
+                                 (:path, :size_bytes, :last_modified_ns, :sha256_digest)
+                                 on conflict (path) do update 
+                                 set size_bytes = :size_bytes, 
+                                    last_modified_ns = :last_modified_ns, 
+                                    sha256_digest = :sha256_digest;
+                        """,
+                        {
+                            'path': str(relative_path),
+                            'size_bytes': stat.st_size,
+                            'last_modified_ns': stat.st_mtime_ns,
+                            'sha256_digest': real_sha256_digest
+                        }
+                    )
+                    # Do this after updating the DB, because a write to SQLite is cheaper than reading a file.
+                    # https://www.sqlite.org/fasterthanfs.html
+                    if previous_sha256_digest == real_sha256_digest:
+                        raise FileExceptions.Skip()
+                    # Actually schedule the file for indexing.
+                    events.append(Events.IndexFile(relative_path, file_bytes))
+                    # Delete old objects before adding new ones.
+                    events.append(Events.DeleteFileObjects(relative_path))
+                    continue
+                except FileExceptions.Delete:
                     events.append(Events.DeleteFile(path))
                     # Need to run this first due to foreign key constraints.
                     events.append(Events.DeleteFileObjects(path))
                     continue
-                # TODO: This is hilariously slow.
-                relative_path = path.relative_to(config.root)
-                paths_visited.append(relative_path)
-
-                result = db.execute(
+                except FileExceptions.Skip:
+                    if rebuilding_faiss_index:
+                        events.append(Events.ReloadFileEmbeddings(path))
+                    continue
+                except FileExceptions.Ignore:
+                    continue
+            elif isinstance(event, Events.ReloadFileEmbeddings):
+                # Could do this in a single query at the end.
+                path = event.path
+                assert isinstance(path, Path)
+                embedding_rows = db.execute(
                     """
-                        select 
-                            size_bytes, 
-                            last_modified_ns, 
-                            sha256_digest 
-                        from file 
-                        where path = :path;
-                    """,
-                    (str(relative_path),)
-                ).fetchone()
-
-                stat = path.stat()
-                if result is not None:
-                    size, last_modified, previous_sha256_digest = result
-                    if stat.st_size == size and stat.st_mtime == last_modified:
-                        continue
-                else:
-                    previous_sha256_digest = None
-
-                file_bytes = path.read_bytes()
-                # Ignore binary files.
-                if is_binary(file_bytes):
-                    continue
-                # TODO: See how long this takes on large repos.
-                if not (is_utf8(file_bytes) or is_utf16(file_bytes)):
-                    continue
-                # TODO: We might want to memoize the "skip" results if this is an issue.
-                real_sha256_digest = hashlib.sha256(file_bytes).digest()
-                # TODO: To support incremental indexing, i.e. allowing this loop to make progress if it's interrupted
-                #  before finishing, we would need to wait until the objects, embeddings, FTS index, etc. are computed.
-                db.execute(
-                    """
-                        insert into file 
-                            (path, size_bytes, last_modified_ns, sha256_digest)
-                             values 
-                             (:path, :size_bytes, :last_modified_ns, :sha256_digest)
-                             on conflict (path) do update 
-                             set size_bytes = :size_bytes, 
-                                last_modified_ns = :last_modified_ns, 
-                                sha256_digest = :sha256_digest;
-                    """,
-                    {
-                        'path': str(relative_path),
-                        'size_bytes': stat.st_size,
-                        'last_modified_ns': stat.st_mtime_ns,
-                        'sha256_digest': real_sha256_digest
-                    }
-                )
-                # Do this after updating the DB, because a write to SQLite is cheaper than reading a file.
-                # https://www.sqlite.org/fasterthanfs.html
-                if previous_sha256_digest == real_sha256_digest:
-                    continue
-                # Actually schedule the file for indexing.
-                events.append(Events.IndexFile(relative_path, file_bytes))
-                # Delete old objects before adding new ones.
-                events.append(Events.DeleteFileObjects(relative_path))
-                continue
+                           select 
+                               object_id,
+                               content_sha256,
+                               data 
+                           from embedding 
+                           where object_id in (
+                               select id from object 
+                               where path = :path
+                           )
+                        """,
+                    {'path': str(path)}
+                ).fetchall()
+                embeddings = [
+                    Embedding(
+                        object_id=x['object_id'],
+                        data=deserialize_embedding_data(x['data']),
+                        content_hash=x['content_sha256']
+                    )
+                    for x in embedding_rows
+                ]
+                embeddings_to_index.extend(embeddings)
             elif isinstance(event, Events.DeleteFile):
                 relative_path = event.path
                 assert isinstance(relative_path, Path)
@@ -316,6 +377,7 @@ def index_paths(
                     {'path': str(relative_path)}
                 )
             elif isinstance(event, Events.DeleteFileObjects):
+                relative_path = event.path
                 id_tuples = db.execute(
                     """
                         delete from object 
@@ -333,7 +395,7 @@ def index_paths(
                         """,
                         deleted_ids
                     )
-                    # These are relatively expensive to compute, so keep them around.
+                    # These are relatively expensive to compute, and accessible by their hash, so keep them around.
                     # db.execute(
                     #     f"""
                     #         delete from embedding
@@ -509,7 +571,11 @@ def index_paths(
 @dataclasses.dataclass
 class Flags:
     directory: Path
+    background: bool
+    # TODO: These conflict and suck.
     rebuild_faiss_index: bool
+    cached_only: bool
+    query: str
 
 
 def main():
@@ -534,15 +600,29 @@ def main():
     )
     # Example: Add an argument to the search command
     search_parser.add_argument(
+        'query',
+        nargs='?',
+        help='Search query. If not provided, enters interactive mode.'
+    )
+    search_parser.add_argument(
         '-d', '--directory',
         help='Specify the directory to start the search from.',
         default=Path.cwd(),
         type=Path
     )
-
     search_parser.add_argument(
         '--rebuild-faiss-index',
         help='Rebuild the FAISS index.',
+        action='store_true'
+    )
+    search_parser.add_argument(
+        '-c', '--cached-only',
+        help='Only read from cache. Avoids running stat on every file / reading files.',
+        action='store_true'
+    )
+    search_parser.add_argument(
+        '-b', '--background',
+        help='Reindex in the background.',
         action='store_true'
     )
 
@@ -550,7 +630,10 @@ def main():
 
     flags = Flags(
         directory=args.directory,
-        rebuild_faiss_index=args.rebuild_faiss_index
+        rebuild_faiss_index=args.rebuild_faiss_index,
+        cached_only=args.cached_only,
+        query=args.query,
+        background=args.background
     )
 
     if args.command == 'search':
@@ -570,7 +653,9 @@ def main():
         try:
             assert dependencies.db
             assert dependencies.index
-            index_paths(dependencies, config, [git_repository_dir], total=True)
+            if not flags.cached_only:
+                index_paths(dependencies, config, [git_repository_dir], total=True)
+
         finally:
             dependencies.db.close()
         print(STATS.dumps())
