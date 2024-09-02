@@ -92,44 +92,44 @@ def is_utf16(file_bytes: bytes) -> bool:
         return False
 
 
-def get_request_scheduler(
-        oai_client: OpenAI,
-        embedding_config: EmbeddingsConfig
-) -> tuple[T.Callable[[EmbeddingRequest], T.Iterable[Embedding]], T.Callable[[], T.Iterable[Embedding]]]:
-    batch, batch_tokens = [], 0
-    batch_size_limit = 2048
-    # Observed through testing.
-    batch_token_limit = 400_000
-    # Takes about 200ms to initialize, so do it lazily + once.
-    encoding: tiktoken.Encoding | None = None
+# Put this on Dependencies object.
+class OpenAIRequestScheduler:
+    def __init__(self, oai_client: OpenAI, embedding_config: EmbeddingsConfig):
+        self.oai_client = oai_client
+        self.embedding_config = embedding_config
+        self.batch = []
+        self.batch_tokens = 0
+        self.batch_size_limit = 2048
+        self.batch_token_limit = 400_000
 
-    def run_requests() -> T.Iterable[Embedding]:
-        nonlocal batch
-        if not batch:
-            return []
-        return create_openai_embeddings_sync_batched(
-            oai_client,
-            batch,
-            embedding_config
-        )
+    @cached_property
+    def encoding(self) -> tiktoken.Encoding:
+        return tiktoken.encoding_for_model(self.embedding_config.model)
 
-    def schedule_request(req: EmbeddingRequest) -> T.Iterable[Embedding]:
-        nonlocal batch, batch_size_limit, batch_tokens, encoding
-        if encoding is None:
-            encoding = tiktoken.encoding_for_model(embedding_config.model)
-        request_tokens = len(encoding.encode(req.content, disallowed_special=()))
+    def schedule(self, req: EmbeddingRequest) -> T.Iterable[Embedding]:
+        request_tokens = len(self.encoding.encode(req.content, disallowed_special=()))
+        results = []
         if request_tokens > 8192:
-            return []
-        if len(batch) >= batch_size_limit or batch_tokens + request_tokens > batch_token_limit:
-            results = run_requests()
-            batch[:], batch_tokens = [req], request_tokens
             return results
-        else:
-            batch.append(req)
-            batch_tokens += request_tokens
-            return []
+        if len(self.batch) >= self.batch_size_limit or self.batch_tokens + request_tokens > self.batch_token_limit:
+            results = self.flush()
+            self.batch.clear()
+            self.batch_tokens = 0
+        self.batch.append(req)
+        self.batch_tokens += request_tokens
+        return results
 
-    return schedule_request, run_requests
+    def flush(self) -> T.Iterable[Embedding]:
+        if not self.batch:
+            return []
+        results = create_openai_embeddings_sync_batched(
+            self.oai_client,
+            self.batch,
+            self.embedding_config
+        )
+        self.batch = []
+        self.batch_tokens = 0
+        return results
 
 
 @dataclasses.dataclass
@@ -195,6 +195,10 @@ class Dependencies:
         except FileNotFoundError:
             return lambda _: False
 
+    @cached_property
+    def request_scheduler(self) -> OpenAIRequestScheduler:
+        return OpenAIRequestScheduler(self.openai_client, self.config.embeddings)
+
 
 class FileExceptions:
     class AlreadyIndexed(Exception):
@@ -223,7 +227,6 @@ def index_paths(
         *,
         total: bool = True
 ):
-    oai_client = dependencies.openai_client
     ignore = dependencies.gitignore
     db = dependencies.db
     index = dependencies.index
@@ -250,8 +253,6 @@ def index_paths(
     ]
     if total:
         events.insert(1, Events.DeleteNotVisited(paths_visited))
-
-    embedding_scheduler, flush_embeddings = get_request_scheduler(oai_client, config.embeddings)
 
     try:
         while events:
@@ -501,11 +502,11 @@ def index_paths(
                         )
                         embeddings_batch.append(embedding)
                     else:
-                        embeddings = embedding_scheduler(request)
+                        embeddings = dependencies.request_scheduler.schedule(request)
                         embeddings_batch.extend(embeddings)
                 events.append(Events.StoreEmbeddings(embeddings=embeddings_batch))
             elif isinstance(event, Events.FlushEmbeddings):
-                results = flush_embeddings()
+                results = dependencies.request_scheduler.flush()
                 events.append(Events.StoreEmbeddings(embeddings=results))
             elif isinstance(event, Events.StoreEmbeddings):
                 embeddings_batch = event.embeddings
