@@ -175,6 +175,8 @@ class Dependencies:
     def index(self) -> faiss.Index:
         if self.config.rebuild_faiss_index:
             index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.config.embeddings.dimensions))
+            if not self.config.index_path.exists():
+                faiss.write_index(index, str(self.config.index_path))
         else:
             index = faiss.read_index(str(self.config.index_path))
         return index
@@ -663,13 +665,11 @@ def main():
         embeddings=embedding_config,
         OPENAI_API_KEY=Secrets.magic().OPENAI_API_KEY,
     )
-    __ = config.root
+    dependencies = Dependencies(config=config)
+    __ = config.root, dependencies.db, dependencies.index
 
     if args.command == 'search':
-        dependencies = Dependencies(config=config)
         try:
-            assert dependencies.db
-            assert dependencies.index
             if not flags.cached_only:
                 index_paths(dependencies, config, [config.root], total=True)
         finally:

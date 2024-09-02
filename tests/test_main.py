@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import typing as T
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Union
 
@@ -248,6 +249,16 @@ def check_db(
             assert cursor.fetchone()[0] == expected_file_count
 
 
+@contextmanager
+def check_file_did_not_change(path: Path):
+    stat = path.stat()
+    try:
+        yield
+    finally:
+        # May be overly strict.
+        assert path.stat() == stat
+
+
 class TestCli(unittest.TestCase):
     def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -407,3 +418,95 @@ class TestCli(unittest.TestCase):
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files - 1 + 1,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects - 1 + 1
             )
+
+    def test_rebuild_faiss_index(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            search_args = ['search']
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )
+            check_search_command(
+                args=search_args + ['--rebuild-faiss-index'],
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )
+
+    def test_cached_only(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            search_args = ['search']
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )
+            with check_file_did_not_change(path / '.codebased' / 'codebased.db'), \
+                    check_file_did_not_change(path / '.codebased' / 'index.faiss'):
+                check_search_command(
+                    args=search_args + ['--cached-only'],
+                    root=path,
+                    cwd=path,
+                    exit_code=exit_code,
+                    stderr=stderr,
+                    stdout=stdout,
+                    expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                    expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+                )
+
+    def test_cache_only_without_warm_cache(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            search_args = ['search', '--cached-only']
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=0,
+                expected_object_count=0
+            )
+            # Check that we only touched the index the first time (because it didn't exist).
+            with check_file_did_not_change(path / '.codebased' / 'codebased.db'), \
+                    check_file_did_not_change(path / '.codebased' / 'index.faiss'):
+                check_search_command(
+                    args=search_args,
+                    root=path,
+                    cwd=path,
+                    exit_code=exit_code,
+                    stderr=stderr,
+                    stdout=stdout,
+                    expected_file_count=0,
+                    expected_object_count=0
+                )
