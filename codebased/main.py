@@ -132,9 +132,17 @@ def get_request_scheduler(
 @dataclasses.dataclass
 class Config:
     flags: Flags
-    root: Path
     OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
+
+    @cached_property
+    def root(self) -> Path:
+        git_repository_dir = find_root_git_repository(self.flags.directory)
+        if git_repository_dir is None:
+            exit_with_error('Codebased must be run within a Git repository.')
+        print(f'Found Git repository {git_repository_dir}')
+        git_repository_dir: Path = git_repository_dir
+        return git_repository_dir
 
     @property
     def codebased_directory(self) -> Path:
@@ -163,9 +171,9 @@ class Dependencies:
     @cached_property
     def index(self) -> faiss.Index:
         if self.config.rebuild_faiss_index:
-            index = faiss.read_index(str(self.config.index_path))
-        else:
             index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.config.embeddings.dimensions))
+        else:
+            index = faiss.read_index(str(self.config.index_path))
         return index
 
     @cached_property
@@ -218,7 +226,7 @@ def index_paths(
     index = dependencies.index
 
     rebuilding_faiss_index = config.rebuild_faiss_index
-    if total:
+    if not total:
         rebuilding_faiss_index = False
 
     dependencies.db.execute("begin;")
@@ -263,11 +271,11 @@ def index_paths(
             elif isinstance(event, Events.File):
                 path = event.path
                 assert isinstance(path, Path)
+                relative_path = path.relative_to(config.root)
                 try:
                     if not (path.exists() and path.is_file()):
                         raise FileExceptions.Delete()
                     # TODO: This is hilariously slow.
-                    relative_path = path.relative_to(config.root)
                     paths_visited.append(relative_path)
 
                     result = db.execute(
@@ -335,7 +343,7 @@ def index_paths(
                     continue
                 except FileExceptions.Skip:
                     if rebuilding_faiss_index:
-                        events.append(Events.ReloadFileEmbeddings(path))
+                        events.append(Events.ReloadFileEmbeddings(relative_path))
                     continue
                 except FileExceptions.Ignore:
                     continue
@@ -518,13 +526,12 @@ def index_paths(
                 )
                 embeddings_to_index.extend(embeddings_batch)
             elif isinstance(event, Events.FaissInserts):
-                embeddings_to_index = event.embeddings
                 if embeddings_to_index:
                     index.add_with_ids(
-                        np.array([e.data for e in embeddings_to_index]),
-                        [e.object_id for e in embeddings_to_index]
+                        np.array([e.data for e in event.embeddings]),
+                        [e.object_id for e in event.embeddings]
                     )
-                embeddings_to_index.clear()
+                event.embeddings.clear()
             elif isinstance(event, Events.FaissDeletes):
                 delete_ids = event.ids
                 if delete_ids:
@@ -637,25 +644,18 @@ def main():
     )
 
     if args.command == 'search':
-        git_repository_dir = find_root_git_repository(args.directory)
-        if git_repository_dir is None:
-            exit_with_error('Codebased must be run within a Git repository.')
-        print(f'Found Git repository {git_repository_dir}')
-        git_repository_dir: Path = git_repository_dir
         embedding_config = EmbeddingsConfig()
         config = Config(
             flags=flags,
-            root=git_repository_dir,
+            embeddings=embedding_config,
             OPENAI_API_KEY=Secrets.magic().OPENAI_API_KEY,
-            embeddings=embedding_config
         )
         dependencies = Dependencies(config=config)
         try:
             assert dependencies.db
             assert dependencies.index
             if not flags.cached_only:
-                index_paths(dependencies, config, [git_repository_dir], total=True)
-
+                index_paths(dependencies, config, [config.root], total=True)
         finally:
             dependencies.db.close()
         print(STATS.dumps())
