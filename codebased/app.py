@@ -23,7 +23,7 @@ from codebased.filesystem import find_git_repositories, get_git_files, get_file_
     get_filesystem_events_queue
 from codebased.models import PersistentRepository, Repository, ObjectHandle, FileRevision, FileRevisionHandle, \
     PersistentFileRevision, Embedding, EmbeddingRequest, SearchResult
-from codebased.parser import parse_objects, render_object
+from codebased.parser import parse_objects_deprecated, render_object
 from codebased.stats import STATS
 from codebased.storage import persist_repository, persist_file_revision, persist_object, fetch_objects, \
     persist_embedding, fetch_embedding, fetch_embedding_for_hash, fetch_object_handle, DatabaseMigrations
@@ -131,7 +131,7 @@ class App:
                     begin(self.context.db)
                     persistent_file_revision = persist_file_revision(self.context.db, file_revision)
                     file_revision_handle = FileRevisionHandle(repo, persistent_file_revision)
-                    objects = parse_objects(file_revision_handle)
+                    objects = parse_objects_deprecated(file_revision_handle)
                     tmp = []
                     for obj in objects:
                         persistent_object = persist_object(self.context.db, obj)

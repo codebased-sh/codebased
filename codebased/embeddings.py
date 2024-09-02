@@ -16,11 +16,11 @@ def get_embedding_kwargs(config: EmbeddingsConfig) -> dict:
 
 def create_openai_embeddings_sync_batched(
         client: OpenAI,
-        embedding_requests: T.List[EmbeddingRequest],
+        requests: T.List[EmbeddingRequest],
         config: EmbeddingsConfig
 ) -> T.Iterable[Embedding]:
     with STATS.timer("codebased.embeddings.batch.duration"):
-        text = [o.content for o in embedding_requests]
+        text = [o.content for o in requests]
         response = client.embeddings.create(input=text, **get_embedding_kwargs(config))
         STATS.increment("codebased.embeddings.usage.total_tokens", response.usage.total_tokens)
         return [
@@ -29,7 +29,7 @@ def create_openai_embeddings_sync_batched(
                 data=e.embedding,
                 content_hash=o.content_hash
             )
-            for o, e in zip(embedding_requests, response.data)
+            for o, e in zip(requests, response.data)
         ]
 
 

@@ -44,7 +44,7 @@ class FileRevisionHandle:
 
 @dataclasses.dataclass
 class Object:
-    file_revision_id: int
+    path: Path
     name: str
     language: str
     context_before: list[int]
@@ -79,7 +79,6 @@ class EmbeddingRequest:
     object_id: int
     content: str
     content_hash: str
-    token_count: int
 
 
 @dataclasses.dataclass

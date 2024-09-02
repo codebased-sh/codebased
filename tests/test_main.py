@@ -252,8 +252,10 @@ class TestCli(unittest.TestCase):
             stderr = b''
 
             # Test with -d argument
+            workdir = Path.cwd()
+            assert workdir != path
             check_codebased_cli(
-                cwd=Path.cwd(),
+                cwd=workdir,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
@@ -262,9 +264,26 @@ class TestCli(unittest.TestCase):
 
             # Test with --directory argument
             check_codebased_cli(
-                cwd=Path.cwd(),
+                cwd=workdir,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
                 args=['search', '--directory', str(path)]
+            )
+
+    def test_with_gitignore(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO, path)
+            gitignore_path = path / '.gitignore'
+            gitignore_path.write_text('*.py\n')
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            check_codebased_cli(
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                args=['search']
             )

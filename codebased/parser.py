@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import tree_sitter
 import tree_sitter_c
 import tree_sitter_c_sharp
@@ -50,8 +52,13 @@ def get_node_coordinates(node: tree_sitter.Node) -> Coordinates:
 
 
 def get_text_coordinates(text: bytes) -> Coordinates:
-    lines = text.split(b'\n')
-    return (0, 0), (len(lines) - 1, len(lines[-1]))
+    line_count = text.count(b'\n') + 1
+    last_newline_pos = text.rfind(b'\n')
+    total_length = len(text)
+    last_line_length = total_length - last_newline_pos - 1
+    if last_newline_pos == -1:
+        last_line_length = total_length
+    return (0, 0), (line_count - 1, last_line_length)
 
 
 def get_all_parents(node: tree_sitter.Node) -> list[tree_sitter.Node]:
@@ -91,36 +98,37 @@ def get_context(node: tree_sitter.Node) -> tuple[list[int], list[int]]:
     return before, after
 
 
-def parse_objects(file_revision_handle: FileRevisionHandle) -> list[Object]:
+def parse_objects_deprecated(file_revision_handle: FileRevisionHandle) -> list[Object]:
     file = file_revision_handle.path
-    file_type = file.suffix[1:]
+    text = get_file_bytes(file)
+    return parse_objects(file, text)
+
+
+def parse_objects(path: Path, text: bytes) -> list[Object]:
+    file_type = path.suffix[1:]
     impl = None
     for language in LANGUAGES:
         if file_type in language.file_types:
             impl = language
             break
-    text = get_file_bytes(file)
-    try:
-        # This is wasteful.
-        text.decode('utf-8')
-    except UnicodeDecodeError:
-        return []
+    language_name = impl.name if impl else 'text'
+    objects = [
+        Object(
+            path=path,
+            name=str(path),
+            language=language_name,
+            kind='file',
+            byte_range=(0, len(text)),
+            coordinates=get_text_coordinates(text),
+            context_before=[],
+            context_after=[]
+        )
+    ]
     if impl is None:
-        default_objects = parse_objects_default(file_revision_handle.file_revision, text)
-        return default_objects
+        return objects
     tree = impl.parser.parse(text)
     root_node = tree.root_node
-    root_chunk = Object(
-        file_revision_id=file_revision_handle.file_revision.id,
-        name=str(file),
-        kind='file',
-        language=impl.name,
-        byte_range=(0, len(text)),
-        coordinates=get_text_coordinates(text),
-        context_before=[],
-        context_after=[]
-    )
-    chunks = [root_chunk]
+    chunks = objects
     matches = impl.tags.matches(root_node)
     for _, captures in matches:
         name_node = captures.pop('name')
@@ -128,7 +136,7 @@ def parse_objects(file_revision_handle: FileRevisionHandle) -> list[Object]:
             before, after = get_context(definition_node)
             chunks.append(
                 Object(
-                    file_revision_id=file_revision_handle.file_revision.id,
+                    path=path,
                     name=name_node.text.decode('utf-8'),
                     kind=definition_kind,
                     language=impl.name,
@@ -139,22 +147,6 @@ def parse_objects(file_revision_handle: FileRevisionHandle) -> list[Object]:
                 )
             )
     return chunks
-
-
-def parse_objects_default(file_revision, text):
-    default_objects = [
-        Object(
-            file_revision_id=file_revision.id,
-            name=str(file_revision.path),
-            language='text',
-            kind='file',
-            byte_range=(0, len(text)),
-            coordinates=get_text_coordinates(text),
-            context_before=[],
-            context_after=[]
-        )
-    ]
-    return default_objects
 
 
 PHP_IMPL = LanguageImpl.from_language(
@@ -494,20 +486,17 @@ LANGUAGES = [
 
 
 def render_object(
-        obj_handle: ObjectHandle,
+        obj: Object,
+        in_lines: list[bytes],
         *,
         context: bool = True,
         file: bool = True,
         line_numbers: bool = False,
-        ensure_hash: str | None = None
 ) -> str:
-    file_revision = obj_handle.file_revision
-    obj = obj_handle.object
     out_lines = []
     if file:
-        out_lines.append(str(file_revision.path))
+        out_lines.append(str(obj.path))
         out_lines.append('')
-    in_lines = get_file_lines(file_revision.path, ensure_hash=ensure_hash)
     max_line_no = max(
         obj.coordinates[0][0],
         obj.coordinates[1][0],
