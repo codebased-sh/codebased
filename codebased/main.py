@@ -175,69 +175,31 @@ class Dependencies:
             return lambda _: False
 
 
-def main():
-    # TODO: OpenAI API key / authentication to Codebased API.
-    parser = argparse.ArgumentParser(
-        description="Codebased CLI tool",
-        usage="Codebased [-h | --version] {search} ..."
-    )
-    parser.add_argument(
-        '--version',
-        action='version',
-        version=f'Codebased {VERSION}'
-    )
-    subparsers = parser.add_subparsers(
-        dest='command',
-        required=True
-    )
+def event_loop(dependencies: Dependencies, config: Config, paths_to_index: list[Path]):
+    oai_client = dependencies.openai_client
+    ignore = dependencies.gitignore
+    db = dependencies.db
+    index = dependencies.index
 
-    search_parser = subparsers.add_parser(
-        'search',
-        help='Search for Git repository',
-    )
-    # Example: Add an argument to the search command
-    search_parser.add_argument(
-        '-d', '--directory',
-        help='Specify the directory to start the search from',
-        default=Path.cwd(),
-        type=Path
-    )
+    dependencies.db.execute("begin;")
+    # We can actually be sure we visit each file at most once.
+    # Also, we don't need O(1) contains checks.
+    # So use a list instead of a set.
+    # May be useful to see what the traversal order was too.
+    embeddings_to_index: list[Embedding] = []
+    deletion_markers = []
+    events = [
+        Events.Commit(),
+        # Add to FAISS after deletes, because SQLite can reuse row ids.
+        Events.FaissInserts(embeddings_to_index),
+        Events.FaissDeletes(deletion_markers),
+        [Events.Directory(x) if x.is_dir() else Events.File(x) for x in paths_to_index]
+    ]
+    paths_visited = []
 
-    args = parser.parse_args()
+    embedding_scheduler = get_request_scheduler(oai_client, config.embeddings)
 
-    if args.command == 'search':
-        git_repository_dir = find_root_git_repository(args.directory)
-        if git_repository_dir is None:
-            exit_with_error('Codebased must be run within a Git repository.')
-        print(f'Found Git repository {git_repository_dir}')
-        git_repository_dir: Path = git_repository_dir
-        secrets_ = Secrets.magic()
-        embedding_config = EmbeddingsConfig()
-        config = Config(root=git_repository_dir, OPENAI_API_KEY=secrets_.OPENAI_API_KEY, embeddings=embedding_config)
-        dependencies = Dependencies(config=config)
-        oai_client = dependencies.openai_client
-        ignore = dependencies.gitignore
-        db = dependencies.db
-        index = dependencies.index
-
-        dependencies.db.execute("begin;")
-        # We can actually be sure we visit each file at most once.
-        # Also, we don't need O(1) contains checks.
-        # So use a list instead of a set.
-        # May be useful to see what the traversal order was too.
-        embeddings_to_persist: list[Embedding] = []
-        deletion_markers = []
-        events = [
-            Events.Commit(),
-            # Add to FAISS after deletes, because SQLite can reuse row ids.
-            Events.FaissInserts(embeddings_to_persist),
-            Events.FaissDeletes(deletion_markers),
-            Events.Directory(git_repository_dir)
-        ]
-        paths_visited = []
-
-        embedding_scheduler = get_request_scheduler(oai_client, embedding_config)
-
+    try:
         while events:
             event = events.pop()
             if isinstance(event, Events.Directory):
@@ -257,7 +219,7 @@ def main():
                 assert isinstance(path, Path)
                 assert path.is_file()
                 # TODO: This is hilariously slow.
-                relative_path = path.relative_to(git_repository_dir)
+                relative_path = path.relative_to(config.root)
                 paths_visited.append(relative_path)
 
                 result = db.execute(
@@ -435,15 +397,15 @@ def main():
                         for e1 in embeddings_batch
                     ]
                 )
-                embeddings_to_persist.extend(embeddings_batch)
+                embeddings_to_index.extend(embeddings_batch)
             elif isinstance(event, Events.FaissInserts):
-                embeddings_to_persist = event.embeddings
-                if embeddings_to_persist:
+                embeddings_to_index = event.embeddings
+                if embeddings_to_index:
                     index.add_with_ids(
-                        np.array([e.data for e in embeddings_to_persist]),
-                        [e.object_id for e in embeddings_to_persist]
+                        np.array([e.data for e in embeddings_to_index]),
+                        [e.object_id for e in embeddings_to_index]
                     )
-                embeddings_to_persist.clear()
+                embeddings_to_index.clear()
             elif isinstance(event, Events.FaissDeletes):
                 deletion_markers = event.ids
                 if deletion_markers:
@@ -452,25 +414,52 @@ def main():
             elif isinstance(event, Events.Commit):
                 db.commit()
                 faiss.write_index(index, str(config.index_path))
+    except:
+        db.rollback()
+        raise
 
 
-def persist_embeddings(embeddings: T.Iterable[Embedding], db: sqlite3.Connection):
-    db.executemany(
-        """
-            insert into embedding
-            (object_id, data, content_sha256)
-            values
-            (:object_id, :data, :content_sha256)
-        """,
-        [
-            {
-                'object_id': e.object_id,
-                'data': e.data,
-                'content_sha256': e.content_hash
-            }
-            for e in embeddings
-        ]
+def main():
+    # TODO: OpenAI API key / authentication to Codebased API.
+    parser = argparse.ArgumentParser(
+        description="Codebased CLI tool",
+        usage="Codebased [-h | --version] {search} ..."
     )
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'Codebased {VERSION}'
+    )
+    subparsers = parser.add_subparsers(
+        dest='command',
+        required=True
+    )
+
+    search_parser = subparsers.add_parser(
+        'search',
+        help='Search for Git repository',
+    )
+    # Example: Add an argument to the search command
+    search_parser.add_argument(
+        '-d', '--directory',
+        help='Specify the directory to start the search from',
+        default=Path.cwd(),
+        type=Path
+    )
+
+    args = parser.parse_args()
+
+    if args.command == 'search':
+        git_repository_dir = find_root_git_repository(args.directory)
+        if git_repository_dir is None:
+            exit_with_error('Codebased must be run within a Git repository.')
+        print(f'Found Git repository {git_repository_dir}')
+        git_repository_dir: Path = git_repository_dir
+        secrets_ = Secrets.magic()
+        embedding_config = EmbeddingsConfig()
+        config = Config(root=git_repository_dir, OPENAI_API_KEY=secrets_.OPENAI_API_KEY, embeddings=embedding_config)
+        dependencies = Dependencies(config=config)
+        event_loop(dependencies, config, [git_repository_dir])
 
 
 if __name__ == '__main__':
