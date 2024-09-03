@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import argparse
 import dataclasses
 import hashlib
@@ -15,9 +16,10 @@ import faiss
 import gitignore_parser
 import numpy as np
 import tiktoken
+from codebased.config import EmbeddingsConfig
 from openai import OpenAI
 
-from codebased.core import Secrets, EmbeddingsConfig
+from codebased.config import Settings
 from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.models import EmbeddingRequest, Embedding, Object
 from codebased.parser import parse_objects, render_object
@@ -135,8 +137,6 @@ class OpenAIRequestScheduler:
 @dataclasses.dataclass
 class Config:
     flags: Flags
-    OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
-    embeddings: EmbeddingsConfig = EmbeddingsConfig()
 
     @cached_property
     def root(self) -> Path:
@@ -166,15 +166,16 @@ class Config:
 class Dependencies:
     # config must be passed in explicitly.
     config: Config
+    settings: Settings
 
     @cached_property
     def openai_client(self) -> OpenAI:
-        return OpenAI(api_key=self.config.OPENAI_API_KEY)
+        return OpenAI(api_key=self.settings.OPENAI_API_KEY)
 
     @cached_property
     def index(self) -> faiss.Index:
         if self.config.rebuild_faiss_index:
-            index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.config.embeddings.dimensions))
+            index = faiss.IndexIDMap2(faiss.IndexFlatL2(self.settings.embeddings.dimensions))
             if not self.config.index_path.exists():
                 faiss.write_index(index, str(self.config.index_path))
         else:
@@ -199,7 +200,7 @@ class Dependencies:
 
     @cached_property
     def request_scheduler(self) -> OpenAIRequestScheduler:
-        return OpenAIRequestScheduler(self.openai_client, self.config.embeddings)
+        return OpenAIRequestScheduler(self.openai_client, self.settings.embeddings)
 
 
 class FileExceptions:
@@ -266,7 +267,7 @@ def index_paths(
                     continue
                 for entry in os.scandir(path):
                     entry_path = Path(entry.path)
-                    if ignore(entry_path):
+                    if ignore(entry_path):  # noqa
                         continue
                     if entry.is_symlink():
                         continue
@@ -615,7 +616,7 @@ def search_once(dependencies: Dependencies, flags: Flags):
         emb = create_ephemeral_embedding(
             dependencies.openai_client,
             flags.query,
-            dependencies.config.embeddings
+            dependencies.settings.embeddings
         )
         distances, object_ids = dependencies.index.search(
             np.array([emb]),
@@ -764,6 +765,8 @@ def main():
 
     args = parser.parse_args()
 
+    settings = Settings.always()
+
     flags = Flags(
         directory=args.directory,
         rebuild_faiss_index=args.rebuild_faiss_index,
@@ -775,13 +778,8 @@ def main():
         full_text_search=args.full_text_search,
         top_k=args.top_k
     )
-    embedding_config = EmbeddingsConfig()
-    config = Config(
-        flags=flags,
-        embeddings=embedding_config,
-        OPENAI_API_KEY=Secrets.magic().OPENAI_API_KEY,
-    )
-    dependencies = Dependencies(config=config)
+    config = Config(flags=flags)
+    dependencies = Dependencies(config=config, settings=settings)
     __ = config.root, dependencies.db, dependencies.index
 
     if args.command == 'search':

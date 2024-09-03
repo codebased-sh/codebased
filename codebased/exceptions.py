@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-
 class CodebasedException(Exception):
     """
     Differentiate between business logic exceptions and Knightian exceptions.
@@ -10,7 +7,7 @@ class CodebasedException(Exception):
     pass
 
 
-class NoConfigDirectoryException(CodebasedException):
+class MissingConfigFileException(CodebasedException):
     """
     Raised when the config directory is not found.
     """

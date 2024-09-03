@@ -5,12 +5,13 @@ import getpass
 import logging
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 import toml
 
 from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS, DEFAULT_EDITOR
-from codebased.exceptions import NoConfigDirectoryException
+from codebased.exceptions import MissingConfigFileException
 from codebased.models import EDITOR
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,14 @@ class Settings:
     editor: EDITOR = DEFAULT_EDITOR
     OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
 
+    @classmethod
+    def always(cls) -> "Settings":
+        try:
+            cls.verify()
+        except MissingConfigFileException:
+            cls.create()
+        return cls.load_file(CONFIG_FILE)
+
     def __post_init__(self):
         if not self.OPENAI_API_KEY:
             raise ValueError("Codebased requires an OpenAI API key for now. Ask Max if you'd like one to test with.")
@@ -41,20 +50,27 @@ class Settings:
     @staticmethod
     def verify():
         if not CONFIG_FILE.exists():
-            raise NoConfigDirectoryException()
+            raise MissingConfigFileException()
 
-    def create_defaults(self):
+    @classmethod
+    def create(cls):
         greet()
         CONFIG_DIRECTORY.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.touch()
-        self.from_prompt().save(CONFIG_FILE)
+        # TODO: Windows?
+        if sys.stdin.isatty():
+            effective_defaults = cls.from_prompt()
+        else:
+            effective_defaults = Settings()
+        effective_defaults.save(CONFIG_FILE)
 
     def ensure_ok(self):
         try:
             self.verify()
-        except NoConfigDirectoryException:
-            print(f"Looks like you're new here, setting up {str(CONFIG_FILE)}.")
-            self.create_defaults()
+        except MissingConfigFileException:
+            if sys.stdin.isatty():
+                print(f"Looks like you're new here, setting up {str(CONFIG_FILE)}.")
+            self.create()
 
     @classmethod
     def load_file(cls, path: Path):
