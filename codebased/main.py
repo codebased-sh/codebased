@@ -16,10 +16,10 @@ import faiss
 import gitignore_parser
 import numpy as np
 import tiktoken
-from codebased.config import EmbeddingsConfig
+from codebased.settings import EmbeddingsConfig
 from openai import OpenAI
 
-from codebased.config import Settings
+from codebased.settings import Settings
 from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.models import EmbeddingRequest, Embedding, Object
 from codebased.parser import parse_objects, render_object

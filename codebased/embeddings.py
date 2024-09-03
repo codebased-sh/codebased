@@ -2,7 +2,7 @@ import typing as T
 
 from openai import OpenAI
 
-from codebased.config import EmbeddingsConfig
+from codebased.settings import EmbeddingsConfig
 from codebased.models import Embedding, EmbeddingRequest
 from codebased.stats import STATS
 
