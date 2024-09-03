@@ -653,6 +653,7 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSe
         np.array([emb]),
         k=flags.top_k
     )
+    distances, object_ids = distances[0], object_ids[0]
     for object_id, distance in zip(object_ids, distances):
         object_row: sqlite3.Row | None = dependencies.db.execute(
             """
@@ -669,12 +670,12 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSe
                       from object
                       where id = :id;
                """,
-            {'id': object_id}
+            {'id': int(object_id)}
         ).fetchone()
         if object_row is None:
             continue
         obj = deserialize_object_row(object_row)
-        semantic_results.append(SemanticSearchResult(obj, distance))
+        semantic_results.append(SemanticSearchResult(obj, float(distance)))
     return semantic_results
 
 
@@ -737,7 +738,7 @@ def search_once(dependencies: Dependencies, flags: Flags) -> list[CombinedSearch
     semantic_results = semantic_search(dependencies, flags) if flags.semantic else []
     full_text_results = full_text_search(dependencies, flags) if flags.full_text_search else []
     results = merge_results(semantic_results, full_text_results)
-    return results
+    return results[:flags.top_k]
 
 
 def deserialize_object_row(object_row: sqlite3.Row) -> Object:
@@ -848,7 +849,17 @@ def main():
             if not flags.cached_only:
                 index_paths(dependencies, config, [config.root], total=True)
             if flags.query:
-                search_once(dependencies, flags)
+                results = search_once(dependencies, flags)
+                for result in results:
+                    abs_path = config.root / result.obj.path
+                    try:
+                        underlying_file_bytes = abs_path.read_bytes()
+                        lines = underlying_file_bytes.split(b'\n')
+                        rendered = render_object(result.obj, in_lines=lines)
+                        print(rendered)
+                        print()
+                    except FileNotFoundError:
+                        continue
         finally:
             dependencies.db.close()
     if flags.stats:
