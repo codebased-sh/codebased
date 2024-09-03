@@ -888,23 +888,30 @@ def main():
                 index_paths(dependencies, config, [config.root], total=True)
             if flags.query:
                 results = search_once(dependencies, flags)
-                for result in results:
-                    abs_path = config.root / result.obj.path
-                    try:
-                        underlying_file_bytes = abs_path.read_bytes()
-                        actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
-                        if result.content_sha256 != actual_sha256:
-                            continue
-                        lines = underlying_file_bytes.split(b'\n')
-                        rendered = render_object(result.obj, in_lines=lines)
-                        print(rendered)
-                        print()
-                    except FileNotFoundError:
-                        continue
+                print_results(config, results)
         finally:
             dependencies.db.close()
     if flags.stats:
         print(STATS.dumps())
+
+
+def print_results(
+        config: Config,
+        results: list[CombinedSearchResult]
+):
+    for result in results:
+        abs_path = config.root / result.obj.path
+        try:
+            underlying_file_bytes = abs_path.read_bytes()
+            actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
+            if result.content_sha256 != actual_sha256:
+                continue
+            lines = underlying_file_bytes.split(b'\n')
+            rendered = render_object(result.obj, in_lines=lines)
+            print(rendered)
+            print()
+        except FileNotFoundError:
+            continue
 
 
 if __name__ == '__main__':
