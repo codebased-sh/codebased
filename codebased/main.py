@@ -699,21 +699,26 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextS
                         from fts(:query)
                         order by rank
                         limit :top_k
+                    ),
+                    ranked_objects as (
+                        select
+                            o.id,
+                            o.path,
+                            o.name,
+                            o.language,
+                            o.context_before,
+                            o.context_after,
+                            o.kind,
+                            o.byte_range,
+                            o.coordinates,
+                            r.rank
+                        from object o
+                        inner join ranked_results r on o.id = r.rowid
                     )
-                    select
-                        o.id,
-                        o.path,
-                        o.name,
-                        o.language,
-                        o.context_before,
-                        o.context_after,
-                        o.kind,
-                        o.byte_range,
-                        o.coordinates,
-                        r.rank,
+                    select 
+                        *,
                         (select sha256_digest from file where path = o.path) as file_sha256_digest
-                    from object o
-                    inner join ranked_results r on o.id = r.rowid
+                    from ranked_objects o
                     order by r.rank;
                 """,
         {
