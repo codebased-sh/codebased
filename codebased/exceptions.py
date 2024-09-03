@@ -10,15 +10,11 @@ class CodebasedException(Exception):
     pass
 
 
-class NoApplicationDirectoryException(CodebasedException):
+class NoConfigDirectoryException(CodebasedException):
     """
-    Raised when the application directory is not found.
+    Raised when the config directory is not found.
     """
-
-    def __init__(self, application_directory: Path):
-        self.application_directory = application_directory
-        super().__init__(f"The application directory {str(application_directory)} was not found.")
-
+    pass
 
 class NotFoundException(CodebasedException, LookupError):
     """
