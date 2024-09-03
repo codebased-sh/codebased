@@ -16,6 +16,7 @@ import faiss
 import gitignore_parser
 import numpy as np
 import tiktoken
+
 from codebased.settings import EmbeddingsConfig
 
 if T.TYPE_CHECKING:
@@ -612,12 +613,14 @@ from dataclasses import dataclass
 class SemanticSearchResult:
     obj: Object
     distance: float
+    content_sha256: bytes
 
 
 @dataclass
 class FullTextSearchResult:
     obj: Object
     bm25: float
+    content_sha256: bytes
 
 
 @dataclass
@@ -625,6 +628,7 @@ class CombinedSearchResult:
     obj: Object
     l2: float | None
     bm25: float | None
+    content_sha256: bytes
 
     @property
     def _sort_key(self) -> tuple[float, float]:
@@ -671,8 +675,9 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSe
                           context_after,
                           kind,
                           byte_range,
-                          coordinates
-                      from object
+                          coordinates,
+                          (select sha256_digest from file where path = o.path) as file_sha256_digest
+                      from object o
                       where id = :id;
                """,
             {'id': int(object_id)}
@@ -680,7 +685,8 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSe
         if object_row is None:
             continue
         obj = deserialize_object_row(object_row)
-        semantic_results.append(SemanticSearchResult(obj, float(distance)))
+        result = SemanticSearchResult(obj, float(distance), object_row['file_sha256_digest'])
+        semantic_results.append(result)
     return semantic_results
 
 
@@ -704,7 +710,8 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextS
                         o.kind,
                         o.byte_range,
                         o.coordinates,
-                        r.rank
+                        r.rank,
+                        (select sha256_digest from file where path = o.path) as file_sha256_digest
                     from object o
                     inner join ranked_results r on o.id = r.rowid
                     order by r.rank;
@@ -716,7 +723,7 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextS
     ).fetchall()
     for object_row in object_rows:
         obj = deserialize_object_row(object_row)
-        fts_results.append(FullTextSearchResult(obj, object_row['rank']))
+        fts_results.append(FullTextSearchResult(obj, object_row['rank'], object_row['file_sha256_digest']))
     return fts_results
 
 
@@ -731,11 +738,32 @@ def merge_results(
     for obj_id in both:
         semantic_result = semantic_ids.pop(obj_id)
         full_text_result = full_text_ids.pop(obj_id)
-        results.append(CombinedSearchResult(semantic_result.obj, semantic_result.distance, full_text_result.bm25))
+        assert semantic_result.content_sha256 == full_text_result.content_sha256
+        result = CombinedSearchResult(
+            semantic_result.obj,
+            semantic_result.distance,
+            full_text_result.bm25,
+            semantic_result.content_sha256
+        )
+        results.append(result)
     for full_text_result in full_text_ids.values():
-        results.append(CombinedSearchResult(full_text_result.obj, None, full_text_result.bm25))
+        results.append(
+            CombinedSearchResult(
+                full_text_result.obj,
+                None,
+                full_text_result.bm25,
+                full_text_result.content_sha256
+            )
+        )
     for semantic_result in semantic_ids.values():
-        results.append(CombinedSearchResult(semantic_result.obj, semantic_result.distance, None))
+        results.append(
+            CombinedSearchResult(
+                semantic_result.obj,
+                semantic_result.distance,
+                None,
+                semantic_result.content_sha256
+            )
+        )
     return sorted(results)
 
 
@@ -859,6 +887,9 @@ def main():
                     abs_path = config.root / result.obj.path
                     try:
                         underlying_file_bytes = abs_path.read_bytes()
+                        actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
+                        if result.content_sha256 != actual_sha256:
+                            continue
                         lines = underlying_file_bytes.split(b'\n')
                         rendered = render_object(result.obj, in_lines=lines)
                         print(rendered)
