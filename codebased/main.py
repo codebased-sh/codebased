@@ -600,88 +600,149 @@ class Flags:
     query: str
 
 
-@dataclasses.dataclass
-class SearchResult:
+from dataclasses import dataclass
+
+
+@dataclass
+class SemanticSearchResult:
     obj: Object
-    # L2 distance for semantic search.
-    # Could use BM25 etc. for full-text search.
-    score: float | None = None
+    distance: float
 
 
-def search_once(dependencies: Dependencies, flags: Flags):
-    # TODO: Cache invalidation re: file changes.
-    # TODO: Merge results. Need to develop methodology.
-    results: dict[int, Object] = {}
-    if flags.semantic:
-        emb = create_ephemeral_embedding(
-            dependencies.openai_client,
-            flags.query,
-            dependencies.settings.embeddings
-        )
-        distances, object_ids = dependencies.index.search(
-            np.array([emb]),
-            k=flags.top_k
-        )
-        for object_id, distance in zip(object_ids, distances):
-            object_row: sqlite3.Row | None = dependencies.db.execute(
-                """
-                          select
-                              id,
-                              path,
-                              name,
-                              language,
-                              context_before,
-                              context_after,
-                              kind,
-                              byte_range,
-                              coordinates
-                          from object
-                          where id = :id;
-                   """,
-                {'id': object_id}
-            ).fetchone()
-            if object_row is None:
-                continue
-            obj = deserialize_object_row(object_row)
-            results[object_id] = obj
-    if flags.full_text_search:
-        # https://www.sqlite.org/fts5.html#the_bm25_function
-        # Can define relative importance of path, content, etc.
-        object_rows = dependencies.db.execute(
+@dataclass
+class FullTextSearchResult:
+    obj: Object
+    bm25: float
+
+
+@dataclass
+class CombinedSearchResult:
+    obj: Object
+    l2: float | None
+    bm25: float | None
+
+    @property
+    def _sort_key(self) -> tuple[float, float]:
+        if self.l2 is not None and self.bm25 is not None:
+            return 0, self.l2 * self.bm25
+        elif self.bm25 is not None:
+            return 1, self.bm25
+        elif self.l2 is not None:
+            return 2, self.l2
+        else:
+            return 3, 0
+
+    def __lt__(self, other: CombinedSearchResult):
+        return self._sort_key < other._sort_key
+
+    def __gt__(self, other: CombinedSearchResult):
+        return self._sort_key > other._sort_key
+
+    def __eq__(self, other: CombinedSearchResult):
+        return self._sort_key == other._sort_key
+
+
+def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSearchResult]:
+    semantic_results: list[SemanticSearchResult] = []
+    emb = create_ephemeral_embedding(
+        dependencies.openai_client,
+        flags.query,
+        dependencies.settings.embeddings
+    )
+    distances, object_ids = dependencies.index.search(
+        np.array([emb]),
+        k=flags.top_k
+    )
+    for object_id, distance in zip(object_ids, distances):
+        object_row: sqlite3.Row | None = dependencies.db.execute(
             """
-                        with ranked_results as (
-                            select rowid, rank
-                            from fts(:query)
-                            order by rank
-                            limit :top_k
-                        )
-                        select
-                            o.id,
-                            o.path,
-                            o.name,
-                            o.language,
-                            o.context_before,
-                            o.context_after,
-                            o.kind,
-                            o.byte_range,
-                            o.coordinates,
-                            r.rank
-                        from object o
-                        inner join ranked_results r on o.id = r.rowid
-                        order by r.rank;
-                    """,
-            {
-                'query': flags.query,
-                'top_k': flags.top_k
-            }
-        ).fetchall()
-        for object_row in object_rows:
-            obj = deserialize_object_row(object_row)
-            results[object_row['id']] = obj
+                      select
+                          id,
+                          path,
+                          name,
+                          language,
+                          context_before,
+                          context_after,
+                          kind,
+                          byte_range,
+                          coordinates
+                      from object
+                      where id = :id;
+               """,
+            {'id': object_id}
+        ).fetchone()
+        if object_row is None:
+            continue
+        obj = deserialize_object_row(object_row)
+        semantic_results.append(SemanticSearchResult(obj, distance))
+    return semantic_results
+
+
+def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextSearchResult]:
+    fts_results = []
+    object_rows = dependencies.db.execute(
+        """
+                    with ranked_results as (
+                        select rowid, rank
+                        from fts(:query)
+                        order by rank
+                        limit :top_k
+                    )
+                    select
+                        o.id,
+                        o.path,
+                        o.name,
+                        o.language,
+                        o.context_before,
+                        o.context_after,
+                        o.kind,
+                        o.byte_range,
+                        o.coordinates,
+                        r.rank
+                    from object o
+                    inner join ranked_results r on o.id = r.rowid
+                    order by r.rank;
+                """,
+        {
+            'query': flags.query,
+            'top_k': flags.top_k
+        }
+    ).fetchall()
+    for object_row in object_rows:
+        obj = deserialize_object_row(object_row)
+        fts_results.append(FullTextSearchResult(obj, object_row['rank']))
+    return fts_results
+
+
+def merge_results(
+        semantic_results: list[SemanticSearchResult],
+        full_text_results: list[FullTextSearchResult]
+) -> list[CombinedSearchResult]:
+    results: list[CombinedSearchResult] = []
+    semantic_ids = {result.obj.id: result for result in semantic_results}
+    full_text_ids = {result.obj.id: result for result in full_text_results}
+    both = set(semantic_ids.keys()) & set(full_text_ids.keys())
+    for obj_id in both:
+        semantic_result = semantic_ids.pop(obj_id)
+        full_text_result = full_text_ids.pop(obj_id)
+        results.append(CombinedSearchResult(semantic_result.obj, semantic_result.distance, full_text_result.bm25))
+    for full_text_result in full_text_ids.values():
+        results.append(CombinedSearchResult(full_text_result.obj, None, full_text_result.bm25))
+    for semantic_result in semantic_ids.values():
+        results.append(CombinedSearchResult(semantic_result.obj, semantic_result.distance, None))
+    return sorted(results)
+
+
+def search_once(dependencies: Dependencies, flags: Flags) -> list[CombinedSearchResult]:
+    semantic_results = semantic_search(dependencies, flags) if flags.semantic else []
+    full_text_results = full_text_search(dependencies, flags) if flags.full_text_search else []
+    results = merge_results(semantic_results, full_text_results)
+    return results
 
 
 def deserialize_object_row(object_row: sqlite3.Row) -> Object:
     return Object(
+        id=object_row['id'],
         path=Path(object_row['path']),
         name=object_row['name'],
         language=object_row['language'],
