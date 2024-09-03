@@ -163,33 +163,6 @@ class Settings:
             self.create_defaults()
 
 
-@dataclasses.dataclass
-class Context:
-    secrets: Secrets
-    config: Config
-    db: sqlite3.Connection
-    application_directory: Path
-    indexes_directory: Path
-
-    @cached_property
-    def embedding_model_encoding(self) -> Encoding:
-        return tiktoken.encoding_for_model(self.config.embeddings.model)
-
-    @cached_property
-    def openai_client(self) -> OpenAI:
-        return OpenAI(api_key=self.secrets.OPENAI_API_KEY)
-
-    @classmethod
-    def from_settings(cls, settings: Settings):
-        return cls(
-            secrets=Secrets.load_file(settings.secrets_file),
-            config=Config.load_file(settings.config_file),
-            db=get_db(settings.database_file),
-            application_directory=settings.application_directory,
-            indexes_directory=settings.indexes_directory,
-        )
-
-
 def get_db(database_file: Path) -> sqlite3.Connection:
     db = sqlite3.connect(database_file, check_same_thread=False)
     db.row_factory = sqlite3.Row
@@ -199,12 +172,3 @@ def get_db(database_file: Path) -> sqlite3.Connection:
 def greet():
     with open(PACKAGE_DIR / "GREETING.txt") as f:
         print(f.read())
-
-
-@dataclasses.dataclass
-class Flags:
-    n: int = 10
-    interactive: bool = False
-    query: str = None
-    root: Path = Path.cwd()
-    background: bool = False

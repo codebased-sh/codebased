@@ -2,44 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 import typing as T
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
-
-
-@dataclasses.dataclass
-class Repository:
-    path: Path
-    type: T.Literal["git"]
-
-
-@dataclasses.dataclass
-class PersistentRepository(Repository):
-    id: int
-
-
-@dataclasses.dataclass
-class FileRevision:
-    repository_id: int
-    path: Path
-    hash: str
-    size: int
-    last_modified: datetime
-
-
-@dataclasses.dataclass
-class PersistentFileRevision(FileRevision):
-    id: int
-
-
-@dataclasses.dataclass
-class FileRevisionHandle:
-    repository: PersistentRepository
-    file_revision: PersistentFileRevision
-
-    @property
-    def path(self) -> Path:
-        return self.repository.path / self.file_revision.path
 
 
 @dataclasses.dataclass
@@ -64,17 +28,6 @@ class Object:
 
 
 @dataclasses.dataclass
-class PersistentObject(Object):
-    id: int
-
-
-@dataclasses.dataclass
-class ObjectHandle:
-    file_revision: FileRevisionHandle
-    object: PersistentObject
-
-
-@dataclasses.dataclass
 class EmbeddingRequest:
     object_id: int
     content: str
@@ -89,12 +42,5 @@ class Embedding:
 
 
 Coordinates = T.Tuple[T.Tuple[int, int], T.Tuple[int, int]]
-
-
-@dataclasses.dataclass
-class SearchResult:
-    object_handle: ObjectHandle
-    score: float
-
 
 EDITOR = Literal["vi", "idea", "code"]

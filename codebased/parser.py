@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 from pathlib import Path
 
 import tree_sitter
@@ -15,9 +16,7 @@ import tree_sitter_ruby
 import tree_sitter_rust
 import tree_sitter_typescript
 
-from codebased.filesystem import get_file_bytes, get_file_lines
-from codebased.models import Object, Coordinates, ObjectHandle, FileRevisionHandle
-from codebased.segfault import get_capsule_pointer
+from codebased.models import Object, Coordinates
 
 
 class LanguageImpl:
@@ -96,12 +95,6 @@ def get_context(node: tree_sitter.Node) -> tuple[list[int], list[int]]:
     except IndexError:
         pass
     return before, after
-
-
-def parse_objects_deprecated(file_revision_handle: FileRevisionHandle) -> list[Object]:
-    file = file_revision_handle.path
-    text = get_file_bytes(file)
-    return parse_objects(file, text)
 
 
 def parse_objects(path: Path, text: bytes) -> list[Object]:
@@ -521,3 +514,33 @@ def render_object(
     #     for line in obj.context_after[::-1]:
     #         out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
     return '\n'.join(out_lines)
+
+
+def get_capsule_pointer(capsule):
+    # This is a highly unconventional and potentially unsafe method
+    # It relies on CPython implementation details and may break
+    # in different Python versions or implementations
+
+    # Get the memory address of the capsule object
+    capsule_address = id(capsule)
+
+    # Create a ctypes structure to represent the PyObject
+    class PyObject(ctypes.Structure):
+        _fields_ = [("ob_refcnt", ctypes.c_ssize_t),
+                    ("ob_type", ctypes.c_void_p)]
+
+    # Create a ctypes structure to represent the PyCapsule
+    class PyCapsule(ctypes.Structure):
+        _fields_ = [("PyObject_HEAD", PyObject),
+                    ("pointer", ctypes.c_void_p),
+                    ("name", ctypes.c_char_p),
+                    ("context", ctypes.c_void_p),
+                    ("destructor", ctypes.c_void_p)]
+
+    # Cast the capsule address to a PyCapsule pointer
+    capsule_struct = ctypes.cast(capsule_address, ctypes.POINTER(PyCapsule)).contents
+
+    # Extract the pointer value
+    pointer_value = capsule_struct.pointer
+
+    return pointer_value
