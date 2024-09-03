@@ -1,6 +1,7 @@
 import typing as T
 
-from openai import OpenAI
+if T.TYPE_CHECKING:
+    from openai import OpenAI
 
 from codebased.settings import EmbeddingsConfig
 from codebased.models import Embedding, EmbeddingRequest
@@ -15,7 +16,7 @@ def get_embedding_kwargs(config: EmbeddingsConfig) -> dict:
 
 
 def create_openai_embeddings_sync_batched(
-        client: OpenAI,
+        client: "OpenAI",
         requests: T.List[EmbeddingRequest],
         config: EmbeddingsConfig
 ) -> T.Iterable[Embedding]:
@@ -33,7 +34,7 @@ def create_openai_embeddings_sync_batched(
         ]
 
 
-def create_ephemeral_embedding(client: OpenAI, text: str, config: EmbeddingsConfig) -> list[float]:
+def create_ephemeral_embedding(client: "OpenAI", text: str, config: EmbeddingsConfig) -> list[float]:
     with STATS.timer("codebased.embeddings.ephemeral.duration"):
         response = client.embeddings.create(input=text, **get_embedding_kwargs(config))
         return response.data[0].embedding

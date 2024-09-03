@@ -17,7 +17,9 @@ import gitignore_parser
 import numpy as np
 import tiktoken
 from codebased.settings import EmbeddingsConfig
-from openai import OpenAI
+
+if T.TYPE_CHECKING:
+    from openai import OpenAI
 
 from codebased.settings import Settings
 from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
@@ -96,7 +98,7 @@ def is_utf16(file_bytes: bytes) -> bool:
 
 # Put this on Dependencies object.
 class OpenAIRequestScheduler:
-    def __init__(self, oai_client: OpenAI, embedding_config: EmbeddingsConfig):
+    def __init__(self, oai_client: "OpenAI", embedding_config: EmbeddingsConfig):
         self.oai_client = oai_client
         self.embedding_config = embedding_config
         self.batch = []
@@ -169,7 +171,9 @@ class Dependencies:
     settings: Settings
 
     @cached_property
-    def openai_client(self) -> OpenAI:
+    def openai_client(self) -> "OpenAI":
+        from openai import OpenAI
+
         return OpenAI(api_key=self.settings.OPENAI_API_KEY)
 
     @cached_property
@@ -509,8 +513,9 @@ def index_paths(
                         embeddings_batch.extend(embeddings)
                 events.append(Events.StoreEmbeddings(embeddings=embeddings_batch))
             elif isinstance(event, Events.FlushEmbeddings):
-                results = dependencies.request_scheduler.flush()
-                events.append(Events.StoreEmbeddings(embeddings=results))
+                if 'request_scheduler' in dependencies.__dict__:
+                    results = dependencies.request_scheduler.flush()
+                    events.append(Events.StoreEmbeddings(embeddings=results))
             elif isinstance(event, Events.StoreEmbeddings):
                 embeddings_batch = event.embeddings
                 if not embeddings_batch:
