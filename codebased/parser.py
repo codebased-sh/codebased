@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from functools import lru_cache
 from pathlib import Path
 
 import tree_sitter
@@ -129,11 +130,7 @@ def get_capsule_pointer(capsule):
 
 def parse_objects(path: Path, text: bytes) -> list[Object]:
     file_type = path.suffix[1:]
-    impl = None
-    for language in LANGUAGES:
-        if file_type in language.file_types:
-            impl = language
-            break
+    impl = get_language_for_file_type(file_type)
     language_name = impl.name if impl else 'text'
     objects = [
         Object(
@@ -172,72 +169,111 @@ def parse_objects(path: Path, text: bytes) -> list[Object]:
     return chunks
 
 
-PHP_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_php.language_php()),
-    tags="""
-    (namespace_definition
-  name: (namespace_name) @name) @definition.module
+def get_language_for_file_type(file_type: str) -> LanguageImpl | None:
+    if file_type == 'py':
+        return get_python_impl()
+    elif file_type == 'rs':
+        return get_rust_impl()
+    elif file_type == 'c' or file_type == 'h':
+        return get_c_impl()
+    elif file_type == 'cc' or file_type == 'cpp' or file_type == 'cxx' or file_type == 'hpp' or file_type == 'hxx' or file_type == 'h':
+        return get_cpp_impl()
+    elif file_type == 'cs':
+        return get_c_sharp_impl()
+    elif file_type == 'go':
+        return get_go_impl()
+    elif file_type == 'java':
+        return get_java_impl()
+    elif file_type == 'js' or file_type == 'mjs' or file_type == 'cjs' or file_type == 'jsx':
+        return get_javascript_impl()
+    elif file_type == 'php':
+        return get_php_impl()
+    elif file_type == 'rb':
+        return get_ruby_impl()
+    elif file_type == 'ts':
+        return get_typescript_impl()
+    elif file_type == 'tsx':
+        return get_tsx_impl()
+    else:
+        return None
 
-(interface_declaration
-  name: (name) @name) @definition.interface
 
-(trait_declaration
-  name: (name) @name) @definition.interface
-
-(class_declaration
-  name: (name) @name) @definition.class
-
-(class_interface_clause [(name) (qualified_name)] @name) @definition.class_interface_clause
-
-(property_declaration
-  (property_element (variable_name (name) @name))) @definition.field
-
-(function_definition
-  name: (name) @name) @definition.function
-
-(method_declaration
-  name: (name) @name) @definition.function
-""",
-    file_types=['php'],
-    name='php'
-)
-RUBY_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_ruby.language()),
-    tags="""
-    ; Method definitions
-    (method
-      name: (_) @name) @definition.method
-    (singleton_method
-      name: (_) @name) @definition.method
-
-(alias
-  name: (_) @name) @definition.method
-
-    (class
-      name: [
-        (constant) @name
-        (scope_resolution
-          name: (_) @name)
-      ]) @definition.class
-    (singleton_class
-      value: [
-        (constant) @name
-        (scope_resolution
-          name: (_) @name)
-      ]) @definition.class
-
-; Module definitions
-
-  (module
-    name: [
-      (constant) @name
-      (scope_resolution
-        name: (_) @name)
-    ]) @definition.module
+@lru_cache(1)
+def get_php_impl() -> LanguageImpl:
+    PHP_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_php.language_php()),
+        tags="""
+        (namespace_definition
+      name: (namespace_name) @name) @definition.module
+    
+    (interface_declaration
+      name: (name) @name) @definition.interface
+    
+    (trait_declaration
+      name: (name) @name) @definition.interface
+    
+    (class_declaration
+      name: (name) @name) @definition.class
+    
+    (class_interface_clause [(name) (qualified_name)] @name) @definition.class_interface_clause
+    
+    (property_declaration
+      (property_element (variable_name (name) @name))) @definition.field
+    
+    (function_definition
+      name: (name) @name) @definition.function
+    
+    (method_declaration
+      name: (name) @name) @definition.function
     """,
-    file_types=['rb'],
-    name='ruby'
-)
+        file_types=['php'],
+        name='php'
+    )
+    return PHP_IMPL
+
+
+@lru_cache(1)
+def get_ruby_impl() -> LanguageImpl:
+    RUBY_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_ruby.language()),
+        tags="""
+        ; Method definitions
+        (method
+          name: (_) @name) @definition.method
+        (singleton_method
+          name: (_) @name) @definition.method
+    
+    (alias
+      name: (_) @name) @definition.method
+    
+        (class
+          name: [
+            (constant) @name
+            (scope_resolution
+              name: (_) @name)
+          ]) @definition.class
+        (singleton_class
+          value: [
+            (constant) @name
+            (scope_resolution
+              name: (_) @name)
+          ]) @definition.class
+    
+    ; Module definitions
+    
+      (module
+        name: [
+          (constant) @name
+          (scope_resolution
+            name: (_) @name)
+        ]) @definition.module
+        """,
+        file_types=['rb'],
+        name='ruby'
+    )
+    return RUBY_IMPL
+
+
 _TYPESCRIPT_ONLY_TAG_QUERY = """
     (function_signature
       name: (identifier) @name) @definition.function
@@ -311,164 +347,209 @@ _JAVASCRIPT_TAG_QUERY = """
     
     """
 _TYPESCRIPT_TAG_QUERY = '\n'.join([_TYPESCRIPT_ONLY_TAG_QUERY, _JAVASCRIPT_TAG_QUERY])
-TYPESCRIPT_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_typescript.language_typescript()),
-    tags=_TYPESCRIPT_TAG_QUERY,
-    file_types=[
-        'ts',
-    ],
-    name='typescript'
-)
-TSX_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_typescript.language_tsx()),
-    tags=_TYPESCRIPT_TAG_QUERY,
-    file_types=[
-        'tsx',
-    ],
-    name='tsx'
-)
 
-# This is fucked but if we don't keep this at the top level it will get garbage collected and the code will crash.
+
+@lru_cache(1)
+def get_typescript_impl() -> LanguageImpl:
+    TYPESCRIPT_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_typescript.language_typescript()),
+        tags=_TYPESCRIPT_TAG_QUERY,
+        file_types=[
+            'ts',
+        ],
+        name='typescript'
+    )
+    return TYPESCRIPT_IMPL
+
+
+@lru_cache(1)
+def get_tsx_impl() -> LanguageImpl:
+    TSX_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_typescript.language_tsx()),
+        tags=_TYPESCRIPT_TAG_QUERY,
+        file_types=[
+            'tsx',
+        ],
+        name='tsx'
+    )
+    return TSX_IMPL
+
+
+# This is fucked but if we don't keep this at the top level it might get garbage collected and the code will crash.
 TSP_LANGUAGE = tree_sitter_python.language()
-PYTHON_IMPL = LanguageImpl.from_language(
-    # Don't make breaking changes on me dawg.
-    tree_sitter.Language(get_capsule_pointer(TSP_LANGUAGE)),
-    tags="""
-        (module (expression_statement (assignment left: (identifier) @name) @definition.constant))
-        
-        (class_definition
-          name: (identifier) @name) @definition.class
-        
-        (function_definition
-          name: (identifier) @name) @definition.function
-    """,
-    file_types=['py'],
-    name='python'
-)
-RUST_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_rust.language()),
-    tags="""
-    ; ADT definitions
 
-(struct_item
-    name: (type_identifier) @name) @definition.class
 
-(enum_item
-    name: (type_identifier) @name) @definition.class
+@lru_cache(1)
+def get_python_impl() -> LanguageImpl:
+    PYTHON_IMPL = LanguageImpl.from_language(
+        # Don't make breaking changes on me dawg.
+        tree_sitter.Language(get_capsule_pointer(TSP_LANGUAGE)),
+        tags="""
+            (module (expression_statement (assignment left: (identifier) @name) @definition.constant))
+            
+            (class_definition
+              name: (identifier) @name) @definition.class
+            
+            (function_definition
+              name: (identifier) @name) @definition.function
+        """,
+        file_types=['py'],
+        name='python'
+    )
+    return PYTHON_IMPL
 
-(union_item
-    name: (type_identifier) @name) @definition.class
 
-; type aliases
+@lru_cache(1)
+def get_rust_impl() -> LanguageImpl:
+    RUST_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_rust.language()),
+        tags="""
+        ; ADT definitions
+    
+    (struct_item
+        name: (type_identifier) @name) @definition.class
+    
+    (enum_item
+        name: (type_identifier) @name) @definition.class
+    
+    (union_item
+        name: (type_identifier) @name) @definition.class
+    
+    ; type aliases
+    
+    (type_item
+        name: (type_identifier) @name) @definition.class
+    
+    ; method definitions
+    
+    (function_item
+      name: (identifier) @name) @definition.function
+    
+    ; trait definitions
+    (trait_item
+        name: (type_identifier) @name) @definition.interface
+    
+    ; module definitions
+    (mod_item
+        name: (identifier) @name) @definition.module
+    
+    ; macro definitions
+    
+    (macro_definition
+        name: (identifier) @name) @definition.macro
+    
+    ; implementations
+    
+    (impl_item
+        trait: (type_identifier) @name) @definition.trait.impl
+    
+    (impl_item
+        type: (type_identifier) @name
+        !trait) @definition.struct.impl
+    
+        """,
+        file_types=['rs'],
+        name='rust'
+    )
+    return RUST_IMPL
 
-(type_item
-    name: (type_identifier) @name) @definition.class
 
-; method definitions
+@lru_cache(1)
+def get_c_impl() -> LanguageImpl:
+    C_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_c.language()),
+        tags="""
+            (struct_specifier name: (type_identifier) @name body:(_)) @definition.class
+            
+            (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
+            
+            (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
+            
+            (type_definition declarator: (type_identifier) @name) @definition.type
+            
+            (enum_specifier name: (type_identifier) @name) @definition.type
+        """,
+        file_types=['c', 'h'],
+        name='c'
+    )
+    return C_IMPL
 
-(function_item
-  name: (identifier) @name) @definition.function
 
-; trait definitions
-(trait_item
-    name: (type_identifier) @name) @definition.interface
+@lru_cache(1)
+def get_cpp_impl() -> LanguageImpl:
+    CPP_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_cpp.language()),
+        tags="""
+           (struct_specifier . name: (type_identifier) @name body:(_)) @definition.class
+    
+            (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
+            
+            (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
+    
+            (field_declaration (function_declarator declarator: (field_identifier) @name)) @definition.function
+    
+            ; removed the local scope from the following line after namespace_identifier
+            (function_definition (function_declarator declarator: (qualified_identifier scope: (namespace_identifier) name: (identifier) @name))) @definition.method
+    
+            (type_definition . declarator: (type_identifier) @name) @definition.type
+    
+            (enum_specifier . name: (type_identifier) @name) @definition.type
+    
+            (class_specifier . name: (type_identifier) @name) @definition.class
+        """,
+        file_types=[
+            "cc",
+            "cpp",
+            "cxx",
+            "hpp",
+            "hxx",
+            "h"
+        ],
+        name='cpp'
+    )
+    return CPP_IMPL
 
-; module definitions
-(mod_item
-    name: (identifier) @name) @definition.module
 
-; macro definitions
+@lru_cache(1)
+def get_c_sharp_impl() -> LanguageImpl:
+    C_SHARP_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_c_sharp.language()),
+        tags="""
+            (class_declaration name: (identifier) @name) @definition.class
+            (interface_declaration name: (identifier) @name) @definition.interface
+            (method_declaration name: (identifier) @name) @definition.method
+            (namespace_declaration name: (identifier) @name) @definition.module
+        """,
+        file_types=['cs'],
+        name='csharp'
+    )
+    return C_SHARP_IMPL
 
-(macro_definition
-    name: (identifier) @name) @definition.macro
 
-; implementations
+@lru_cache(1)
+def get_go_impl() -> LanguageImpl:
+    GO_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_go.language()),
+        # TODO: Need to add constants to this.
+        tags="""
+          (function_declaration
+            name: (identifier) @name) @definition.function
+          (method_declaration
+            name: (field_identifier) @name) @definition.method
+            (type_declaration (type_spec
+              name: (type_identifier) @name)) @definition.type
+        """,
+        file_types=['go'],
+        name='go'
+    )
+    return GO_IMPL
 
-(impl_item
-    trait: (type_identifier) @name) @definition.trait.impl
 
-(impl_item
-    type: (type_identifier) @name
-    !trait) @definition.struct.impl
-
-    """,
-    file_types=['rs'],
-    name='rust'
-)
-C_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_c.language()),
-    tags="""
-        (struct_specifier name: (type_identifier) @name body:(_)) @definition.class
-        
-        (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
-        
-        (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
-        
-        (type_definition declarator: (type_identifier) @name) @definition.type
-        
-        (enum_specifier name: (type_identifier) @name) @definition.type
-    """,
-    file_types=['c', 'h'],
-    name='c'
-)
-CPP_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_cpp.language()),
-    tags="""
-       (struct_specifier . name: (type_identifier) @name body:(_)) @definition.class
-
-        (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
-        
-        (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
-
-        (field_declaration (function_declarator declarator: (field_identifier) @name)) @definition.function
-
-        ; removed the local scope from the following line after namespace_identifier
-        (function_definition (function_declarator declarator: (qualified_identifier scope: (namespace_identifier) name: (identifier) @name))) @definition.method
-
-        (type_definition . declarator: (type_identifier) @name) @definition.type
-
-        (enum_specifier . name: (type_identifier) @name) @definition.type
-
-        (class_specifier . name: (type_identifier) @name) @definition.class
-    """,
-    file_types=[
-        "cc",
-        "cpp",
-        "cxx",
-        "hpp",
-        "hxx",
-        "h"
-    ],
-    name='cpp'
-)
-C_SHARP_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_c_sharp.language()),
-    tags="""
-        (class_declaration name: (identifier) @name) @definition.class
-        (interface_declaration name: (identifier) @name) @definition.interface
-        (method_declaration name: (identifier) @name) @definition.method
-        (namespace_declaration name: (identifier) @name) @definition.module
-    """,
-    file_types=['cs'],
-    name='csharp'
-)
-GO_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_go.language()),
-    # TODO: Need to add constants to this.
-    tags="""
-      (function_declaration
-        name: (identifier) @name) @definition.function
-      (method_declaration
-        name: (field_identifier) @name) @definition.method
-        (type_declaration (type_spec
-          name: (type_identifier) @name)) @definition.type
-    """,
-    file_types=['go'],
-    name='go'
-)
-JAVA_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_java.language()),
-    tags="""
+@lru_cache(1)
+def get_java_impl() -> LanguageImpl:
+    JAVA_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_java.language()),
+        tags="""
     (class_declaration
       name: (identifier) @name) @definition.class
     
@@ -478,34 +559,26 @@ JAVA_IMPL = LanguageImpl.from_language(
     (interface_declaration
       name: (identifier) @name) @definition.interface
     """,
-    file_types=['java'],
-    name='java'
-)
-JAVASCRIPT_IMPL = LanguageImpl.from_language(
-    tree_sitter.Language(tree_sitter_javascript.language()),
-    tags=_JAVASCRIPT_TAG_QUERY,
-    file_types=[
-        "js",
-        "mjs",
-        "cjs",
-        "jsx"
-    ],
-    name='javascript'
-)
-LANGUAGES = [
-    PYTHON_IMPL,
-    RUST_IMPL,
-    CPP_IMPL,
-    C_IMPL,
-    C_SHARP_IMPL,
-    GO_IMPL,
-    JAVA_IMPL,
-    JAVASCRIPT_IMPL,
-    PHP_IMPL,
-    RUBY_IMPL,
-    TYPESCRIPT_IMPL,
-    TSX_IMPL
-]
+        file_types=['java'],
+        name='java'
+    )
+    return JAVA_IMPL
+
+
+@lru_cache(1)
+def get_javascript_impl() -> LanguageImpl:
+    JAVASCRIPT_IMPL = LanguageImpl.from_language(
+        tree_sitter.Language(tree_sitter_javascript.language()),
+        tags=_JAVASCRIPT_TAG_QUERY,
+        file_types=[
+            "js",
+            "mjs",
+            "cjs",
+            "jsx"
+        ],
+        name='javascript'
+    )
+    return JAVASCRIPT_IMPL
 
 
 def render_object(
