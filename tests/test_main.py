@@ -178,6 +178,9 @@ def check_codebased_cli(
         stderr=subprocess.PIPE,
         stdin=subprocess.PIPE
     )
+    if proc.returncode != 0:
+        print(f'stdout: {proc.stdout.decode("utf-8")}')
+        print(f'stderr: {proc.stderr.decode("utf-8")}')
     assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {proc.stdout}, stderr: {proc.stderr}'
     if isinstance(stdout, bytes):
         assert proc.stdout == stdout, f'{proc.stdout} != {stdout}'
@@ -239,14 +242,18 @@ def check_db(
     with sqlite3.connect(db_path) as db:
         if expected_object_count is not None:
             cursor = db.execute('select count(*) from object')
-            assert cursor.fetchone()[0] == expected_object_count
+            actual_object_count = cursor.fetchone()[0]
+            assert actual_object_count == expected_object_count
             cursor = db.execute('select count(*) from fts')
-            assert cursor.fetchone()[0] == expected_object_count
+            actual_fts_object_count = cursor.fetchone()[0]
+            assert actual_fts_object_count == expected_object_count
             cursor = db.execute('select count(*) from embedding where object_id in (select id from object)')
-            assert cursor.fetchone()[0] == expected_object_count
+            actual_embedding_count = cursor.fetchone()[0]
+            assert actual_embedding_count == expected_object_count
         if expected_file_count is not None:
             cursor = db.execute('select count(*) from file')
-            assert cursor.fetchone()[0] == expected_file_count
+            actual_file_count = cursor.fetchone()[0]
+            assert actual_file_count == expected_file_count
 
 
 @contextmanager
@@ -497,7 +504,7 @@ class TestCli(unittest.TestCase):
                 expected_file_count=0,
                 expected_object_count=0
             )
-            # Check that we only touched the index the first time (because it didn't exist).
+            # Check that we only touched the index the first time because it didn't exist.
             with check_file_did_not_change(path / '.codebased' / 'codebased.db'), \
                     check_file_did_not_change(path / '.codebased' / 'index.faiss'):
                 check_search_command(
@@ -510,3 +517,60 @@ class TestCli(unittest.TestCase):
                     expected_file_count=0,
                     expected_object_count=0
                 )
+
+    def test_semantic_search(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            search_args = ['search', 'Hello world', '--semantic-search']
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )
+
+    def test_full_text_search(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            search_args = ['search', 'Hello world', '--full-text-search']
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )
+
+    def test_hybrid_search(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stderr = b''
+            search_args = ['search', 'Hello world', '--semantic-search', '--full-text-search']
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )

@@ -18,7 +18,7 @@ import tiktoken
 from openai import OpenAI
 
 from codebased.core import Secrets, EmbeddingsConfig
-from codebased.embeddings import create_openai_embeddings_sync_batched
+from codebased.embeddings import create_openai_embeddings_sync_batched, create_ephemeral_embedding
 from codebased.models import EmbeddingRequest, Embedding, Object
 from codebased.parser import parse_objects, render_object
 from codebased.stats import STATS
@@ -592,8 +592,104 @@ class Flags:
     # TODO: These conflict and suck.
     rebuild_faiss_index: bool
     cached_only: bool
-    query: str
     stats: bool
+    semantic: bool
+    full_text_search: bool
+    top_k: int
+    query: str
+
+
+@dataclasses.dataclass
+class SearchResult:
+    obj: Object
+    # L2 distance for semantic search.
+    # Could use BM25 etc. for full-text search.
+    score: float | None = None
+
+
+def search_once(dependencies: Dependencies, flags: Flags):
+    # TODO: Cache invalidation re: file changes.
+    # TODO: Merge results. Need to develop methodology.
+    results: dict[int, Object] = {}
+    if flags.semantic:
+        emb = create_ephemeral_embedding(
+            dependencies.openai_client,
+            flags.query,
+            dependencies.config.embeddings
+        )
+        distances, object_ids = dependencies.index.search(
+            np.array([emb]),
+            k=flags.top_k
+        )
+        for object_id, distance in zip(object_ids, distances):
+            object_row: sqlite3.Row | None = dependencies.db.execute(
+                """
+                          select
+                              id,
+                              path,
+                              name,
+                              language,
+                              context_before,
+                              context_after,
+                              kind,
+                              byte_range,
+                              coordinates
+                          from object
+                          where id = :id;
+                   """,
+                {'id': object_id}
+            ).fetchone()
+            if object_row is None:
+                continue
+            obj = deserialize_object_row(object_row)
+            results[object_id] = obj
+    if flags.full_text_search:
+        # https://www.sqlite.org/fts5.html#the_bm25_function
+        # Can define relative importance of path, content, etc.
+        object_rows = dependencies.db.execute(
+            """
+                        with ranked_results as (
+                            select rowid, rank
+                            from fts(:query)
+                            order by rank
+                            limit :top_k
+                        )
+                        select
+                            o.id,
+                            o.path,
+                            o.name,
+                            o.language,
+                            o.context_before,
+                            o.context_after,
+                            o.kind,
+                            o.byte_range,
+                            o.coordinates,
+                            r.rank
+                        from object o
+                        inner join ranked_results r on o.id = r.rowid
+                        order by r.rank;
+                    """,
+            {
+                'query': flags.query,
+                'top_k': flags.top_k
+            }
+        ).fetchall()
+        for object_row in object_rows:
+            obj = deserialize_object_row(object_row)
+            results[object_row['id']] = obj
+
+
+def deserialize_object_row(object_row: sqlite3.Row) -> Object:
+    return Object(
+        path=Path(object_row['path']),
+        name=object_row['name'],
+        language=object_row['language'],
+        context_before=json.loads(object_row['context_before']),
+        context_after=json.loads(object_row['context_after']),
+        kind=object_row['kind'],
+        byte_range=json.loads(object_row['byte_range']),
+        coordinates=json.loads(object_row['coordinates'])
+    )
 
 
 def main():
@@ -648,6 +744,23 @@ def main():
         help='Print stats.',
         action='store_true'
     )
+    search_parser.add_argument(
+        '-k', '--top-k',
+        help='Number of results to return.',
+        type=int,
+        default=10
+    )
+    # TODO: Both should be on by default.
+    search_parser.add_argument(
+        '-ss', '--semantic-search',
+        help='Use semantic search.',
+        action='store_true'
+    )
+    search_parser.add_argument(
+        '-fts', '--full-text-search',
+        help='Use full-text search.',
+        action='store_true'
+    )
 
     args = parser.parse_args()
 
@@ -657,7 +770,10 @@ def main():
         cached_only=args.cached_only,
         query=args.query,
         background=args.background,
-        stats=args.stats
+        stats=args.stats,
+        semantic=args.semantic_search,
+        full_text_search=args.full_text_search,
+        top_k=args.top_k
     )
     embedding_config = EmbeddingsConfig()
     config = Config(
@@ -672,6 +788,8 @@ def main():
         try:
             if not flags.cached_only:
                 index_paths(dependencies, config, [config.root], total=True)
+            if flags.query:
+                search_once(dependencies, flags)
         finally:
             dependencies.db.close()
     if flags.stats:
