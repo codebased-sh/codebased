@@ -14,7 +14,8 @@ from typing import Union
 
 import faiss
 
-from codebased.main import find_root_git_repository, VERSION
+from codebased.index import find_root_git_repository
+from codebased.main import VERSION
 
 SUBMODULE_REPO_TREE = (Path('.'), (
     (Path('README.md'), b'Hello, world!'),
