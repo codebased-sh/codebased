@@ -28,12 +28,14 @@ colorama = "^0.4.6"
 watchdog = "^5.0.0"
 gitignore-parser = "^0.1.11"
 chardet = "^5.2.0"
+textual = "^0.79.1"
 
 [tool.poetry.scripts]
 codebased = "codebased.__main__:cli"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^7.0"
+textual-dev = "^1.6.1"
 
 [build-system]
 requires = ["poetry-core"]
