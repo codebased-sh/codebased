@@ -719,7 +719,7 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextS
                         *,
                         (select sha256_digest from file where path = o.path) as file_sha256_digest
                     from ranked_objects o
-                    order by r.rank;
+                    order by o.rank;
                 """,
         {
             'query': flags.query,
