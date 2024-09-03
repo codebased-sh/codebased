@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -8,9 +9,10 @@ from pathlib import Path
 import numpy as np
 
 from codebased.embeddings import create_ephemeral_embedding
-from codebased.index import Dependencies, Flags
+from codebased.index import Dependencies, Flags, Config
 
 from codebased.models import Object
+from codebased.parser import render_object
 
 
 @dataclasses.dataclass
@@ -195,3 +197,46 @@ def deserialize_object_row(object_row: sqlite3.Row) -> Object:
         byte_range=json.loads(object_row['byte_range']),
         coordinates=json.loads(object_row['coordinates'])
     )
+
+
+@dataclasses.dataclass
+class RenderedResult(CombinedSearchResult):
+    content: str
+
+
+def render_result(
+        config: Config,
+        result: CombinedSearchResult
+) -> RenderedResult | None:
+    abs_path = config.root / result.obj.path
+    try:
+        underlying_file_bytes = abs_path.read_bytes()
+        actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
+        if result.content_sha256 != actual_sha256:
+            return None
+        lines = underlying_file_bytes.split(b'\n')
+        rendered = render_object(result.obj, in_lines=lines)
+        return RenderedResult(**dataclasses.asdict(result), content=rendered)
+    except FileNotFoundError:
+        return None
+
+
+def render_results(
+        config: Config,
+        results: list[CombinedSearchResult]
+) -> list[RenderedResult]:
+    return [
+        rendered
+        for result in results
+        if (rendered := render_result(config, result))
+    ]
+
+
+def print_results(
+        config: Config,
+        results: list[CombinedSearchResult]
+):
+    rendered_results = render_results(config, results)
+    for result in rendered_results:
+        print(result.content)
+        print()

@@ -1,37 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import typer
 
 from codebased.index import Config, Dependencies, index_paths, Flags
-from codebased.parser import render_object
-from codebased.search import CombinedSearchResult, search_once
+from codebased.search import search_once, print_results
 from codebased.settings import Settings
 from codebased.stats import STATS
 
 VERSION = "0.0.1"
-
-
-def print_results(
-        config: Config,
-        results: list[CombinedSearchResult]
-):
-    for result in results:
-        abs_path = config.root / result.obj.path
-        try:
-            underlying_file_bytes = abs_path.read_bytes()
-            actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
-            if result.content_sha256 != actual_sha256:
-                continue
-            lines = underlying_file_bytes.split(b'\n')
-            rendered = render_object(result.obj, in_lines=lines)
-            print(rendered)
-            print()
-        except FileNotFoundError:
-            continue
-
 
 cli = typer.Typer(
     name="Codebased",
