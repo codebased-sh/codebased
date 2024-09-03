@@ -176,7 +176,9 @@ def check_codebased_cli(
         cwd=cwd.resolve(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        stdin=subprocess.PIPE
+        stdin=subprocess.PIPE,
+        # Pass through environment variables.
+        env=os.environ,
     )
     if proc.returncode != 0:
         print(f'stdout: {proc.stdout.decode("utf-8")}')

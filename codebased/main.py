@@ -409,7 +409,7 @@ def index_paths(
                     in_clause = ', '.join(['?'] * len(deleted_ids))
                     db.execute(
                         f"""
-                                delete from fts where rowid = ( {in_clause} );
+                                delete from fts where rowid in ( {in_clause} );
                         """,
                         deleted_ids
                     )
