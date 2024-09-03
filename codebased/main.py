@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import dataclasses
 import hashlib
 import json
@@ -16,6 +15,7 @@ import faiss
 import gitignore_parser
 import numpy as np
 import tiktoken
+import typer
 
 from codebased.settings import EmbeddingsConfig
 
@@ -274,12 +274,15 @@ def index_paths(
                     entry_path = Path(entry.path)
                     if ignore(entry_path):  # noqa
                         continue
-                    if entry.is_symlink():
+                    try:
+                        if entry.is_symlink():
+                            continue
+                        if entry.is_dir():
+                            events.append(Events.Directory(entry_path))
+                        elif entry.is_file():
+                            events.append(Events.File(entry_path))
+                    except PermissionError:
                         continue
-                    if entry.is_dir():
-                        events.append(Events.Directory(entry_path))
-                    elif entry.is_file():
-                        events.append(Events.File(entry_path))
             elif isinstance(event, Events.File):
                 path = event.path
                 assert isinstance(path, Path)
@@ -606,24 +609,21 @@ class Flags:
     query: str
 
 
-from dataclasses import dataclass
-
-
-@dataclass
+@dataclasses.dataclass
 class SemanticSearchResult:
     obj: Object
     distance: float
     content_sha256: bytes
 
 
-@dataclass
+@dataclasses.dataclass
 class FullTextSearchResult:
     obj: Object
     bm25: float
     content_sha256: bytes
 
 
-@dataclass
+@dataclasses.dataclass
 class CombinedSearchResult:
     obj: Object
     l2: float | None
@@ -793,108 +793,6 @@ def deserialize_object_row(object_row: sqlite3.Row) -> Object:
     )
 
 
-def main():
-    # TODO: OpenAI API key / authentication to Codebased API.
-    parser = argparse.ArgumentParser(
-        description="Codebased CLI tool",
-        usage="Codebased [-h | --version] {search} ..."
-    )
-    parser.add_argument(
-        '--version',
-        action='version',
-        version=f'Codebased {VERSION}'
-    )
-    subparsers = parser.add_subparsers(
-        dest='command',
-        required=True
-    )
-
-    search_parser = subparsers.add_parser(
-        'search',
-        help='Search for Git repository',
-    )
-    # Example: Add an argument to the search command
-    search_parser.add_argument(
-        'query',
-        nargs='?',
-        help='Search query. If not provided, enters interactive mode.'
-    )
-    search_parser.add_argument(
-        '-d', '--directory',
-        help='Specify the directory to start the search from.',
-        default=Path.cwd(),
-        type=Path
-    )
-    search_parser.add_argument(
-        '--rebuild-faiss-index',
-        help='Rebuild the FAISS index.',
-        action='store_true'
-    )
-    search_parser.add_argument(
-        '-c', '--cached-only',
-        help='Only read from cache. Avoids running stat on every file / reading files.',
-        action='store_true'
-    )
-    search_parser.add_argument(
-        '-b', '--background',
-        help='Reindex in the background.',
-        action='store_true'
-    )
-    search_parser.add_argument(
-        '--stats',
-        help='Print stats.',
-        action='store_true'
-    )
-    search_parser.add_argument(
-        '-k', '--top-k',
-        help='Number of results to return.',
-        type=int,
-        default=10
-    )
-    # TODO: Both should be on by default.
-    search_parser.add_argument(
-        '-ss', '--semantic-search',
-        help='Use semantic search.',
-        action='store_true'
-    )
-    search_parser.add_argument(
-        '-fts', '--full-text-search',
-        help='Use full-text search.',
-        action='store_true'
-    )
-
-    args = parser.parse_args()
-
-    settings = Settings.always()
-
-    flags = Flags(
-        directory=args.directory,
-        rebuild_faiss_index=args.rebuild_faiss_index,
-        cached_only=args.cached_only,
-        query=args.query,
-        background=args.background,
-        stats=args.stats,
-        semantic=args.semantic_search,
-        full_text_search=args.full_text_search,
-        top_k=args.top_k
-    )
-    config = Config(flags=flags)
-    dependencies = Dependencies(config=config, settings=settings)
-    __ = config.root, dependencies.db, dependencies.index
-
-    if args.command == 'search':
-        try:
-            if not flags.cached_only:
-                index_paths(dependencies, config, [config.root], total=True)
-            if flags.query:
-                results = search_once(dependencies, flags)
-                print_results(config, results)
-        finally:
-            dependencies.db.close()
-    if flags.stats:
-        print(STATS.dumps())
-
-
 def print_results(
         config: Config,
         results: list[CombinedSearchResult]
@@ -914,5 +812,107 @@ def print_results(
             continue
 
 
+cli = typer.Typer(
+    name="Codebased",
+)
+
+
+def version_callback(value: bool):
+    if value:
+        print(f"Codebased {VERSION}")  # Replace with actual version
+        raise typer.Exit()
+
+
+@cli.callback()
+def main(
+        version: bool = typer.Option(
+            None,
+            "-v", "-V", "--version",
+            callback=version_callback,
+            is_eager=True,
+            help="Show the version and exit.",
+        ),
+):
+    pass
+
+
+@cli.command("search")
+def search(
+        query: str = typer.Argument(..., help="The search query"),
+        directory: Path = typer.Option(
+            Path.cwd(),
+            "-d",
+            "--directory",
+            help="Directory to search in.",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            allow_dash=True,
+        ),
+        rebuild_faiss_index: bool = typer.Option(
+            False,
+            help="Rebuild the FAISS index.",
+            is_flag=True,
+        ),
+        cached_only: bool = typer.Option(
+            False,
+            help="Only read from cache. Avoids running stat on every file / reading files.",
+            is_flag=True,
+        ),
+        stats: bool = typer.Option(
+            False,
+            help="Print stats.",
+            is_flag=True,
+        ),
+        semantic: bool = typer.Option(
+            True,
+            "--semantic-search",
+            help="Use semantic search.",
+            is_flag=True,
+        ),
+        full_text: bool = typer.Option(
+            True,
+            "--full-text-search",
+            help="Use full-text search.",
+            is_flag=True,
+        ),
+        top_k: int = typer.Option(
+            10,
+            "-k",
+            "--top-k",
+            help="Number of results to return.",
+            min=1,
+        ),
+):
+    flags = Flags(
+        directory=directory,
+        rebuild_faiss_index=rebuild_faiss_index,
+        cached_only=cached_only,
+        query=query,
+        background=False,
+        stats=stats,
+        semantic=semantic,
+        full_text_search=full_text,
+        top_k=top_k
+    )
+    config = Config(flags=flags)
+    settings = Settings.always()
+    dependencies = Dependencies(config=config, settings=settings)
+    __ = config.root, dependencies.db, dependencies.index
+
+    try:
+        if not flags.cached_only:
+            index_paths(dependencies, config, [config.root], total=True)
+        if flags.query:
+            results = search_once(dependencies, flags)
+            print_results(config, results)
+    finally:
+        dependencies.db.close()
+    if flags.stats:
+        print(STATS.dumps())
+
+
 if __name__ == '__main__':
-    main()
+    cli()

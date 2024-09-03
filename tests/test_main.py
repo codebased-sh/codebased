@@ -274,14 +274,14 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_NOT_REPO_TREE, path)
             exit_code = 1
-            stdout = b''
-            stderr = b'Codebased must be run within a Git repository.\n'
+            stdout = b""
+            stderr = b"Codebased must be run within a Git repository.\n"
             check_codebased_cli(
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['search']
+                args=["search", "Hello world"]
             )
 
     def test_run_inside_a_git_repository(self):
@@ -290,10 +290,10 @@ class TestCli(unittest.TestCase):
             # Simple repo has two files.
             SIMPLE_REPO_TEST_CASE.create(path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
+            stderr = b""
             check_search_command(
-                args=['search'],
+                args=["search", "Hello world"],
                 root=path,
                 cwd=path,
                 exit_code=exit_code,
@@ -303,9 +303,9 @@ class TestCli(unittest.TestCase):
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
             check_search_command(
-                args=['search'],
+                args=["search", "Hello world"],
                 root=path,
-                cwd=path / 'a-directory',
+                cwd=path / "a-directory",
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
@@ -318,9 +318,9 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
-            search_args = ['search']
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
+            stderr = b""
+            search_args = ["search" ,"Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -331,7 +331,7 @@ class TestCli(unittest.TestCase):
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
-            code_dot_py_path = path / 'a-directory' / 'code.py'
+            code_dot_py_path = path / "a-directory" / "code.py"
             os.remove(code_dot_py_path)
             check_search_command(
                 args=search_args,
@@ -348,37 +348,50 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir)
             exit_code = 0
-            stdout = f'Codebased {VERSION}\n'.encode('utf-8')
-            stderr = b''
+            stdout = f"Codebased {VERSION}\n".encode("utf-8")
+            stderr = b""
             check_codebased_cli(
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['--version']
+                args=["--version"]
             )
 
     def test_help(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir)
             exit_code = 0
-            stderr = b''
+            stderr = b""
             check_codebased_cli(
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
-                stdout=re.compile(re.escape(b'usage: Codebased [-h | --version] {search} ...'), re.ASCII),
-                args=['--help']
+                stdout=re.compile(
+                    rb".*COMMAND.*--version.*-V.*--help.*Commands.*search.*",
+                    re.DOTALL | re.ASCII
+                ),
+                args=["--help"]
             )
-            # Note: We're not checking the exact help output as it might change and be system-dependent
+            check_codebased_cli(
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=re.compile(rb".*search.*QUERY.*", re.DOTALL | re.ASCII),
+                args=["search", "--help"]
+            )
+            # Note: We"re not checking the exact help output as it might change and be system-dependent
 
     def test_directory_argument(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
+            stdout = re.compile(
+                b"Found Git repository " + str(path).encode("utf-8") + b".*",
+                re.ASCII | re.DOTALL
+            )
+            stderr = b""
 
             # Test with -d argument
             workdir = Path.cwd()
@@ -389,7 +402,7 @@ class TestCli(unittest.TestCase):
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['search', '-d', str(path)],
+                args=["search", "Hello world", "-d", str(path)],
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
@@ -401,7 +414,7 @@ class TestCli(unittest.TestCase):
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
-                args=['search', '--directory', str(path)],
+                args=["search", "Hello world", "--directory", str(path)],
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
@@ -410,20 +423,20 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
-            gitignore_path = path / '.gitignore'
-            gitignore_path.write_text('*.py\n')
+            gitignore_path = path / ".gitignore"
+            gitignore_path.write_text("*.py\n")
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
+            stderr = b""
             check_search_command(
-                args=['search'],
+                args=["search", "Hello world"],
                 root=path,
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=stdout,
                 # +1 for the gitignore file
-                # -1 for the .py file because it's ignored
+                # -1 for the .py file because it"s ignored
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files - 1 + 1,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects - 1 + 1
             )
@@ -433,9 +446,9 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
-            search_args = ['search']
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
+            stderr = b""
+            search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -447,7 +460,7 @@ class TestCli(unittest.TestCase):
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
             check_search_command(
-                args=search_args + ['--rebuild-faiss-index'],
+                args=search_args + ["--rebuild-faiss-index"],
                 root=path,
                 cwd=path,
                 exit_code=exit_code,
@@ -462,9 +475,9 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
-            search_args = ['search']
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
+            stderr = b""
+            search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -475,10 +488,10 @@ class TestCli(unittest.TestCase):
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
-            with check_file_did_not_change(path / '.codebased' / 'codebased.db'), \
-                    check_file_did_not_change(path / '.codebased' / 'index.faiss'):
+            with check_file_did_not_change(path / ".codebased" / "codebased.db"), \
+                    check_file_did_not_change(path / ".codebased" / "index.faiss"):
                 check_search_command(
-                    args=search_args + ['--cached-only'],
+                    args=search_args + ["--cached-only"],
                     root=path,
                     cwd=path,
                     exit_code=exit_code,
@@ -493,9 +506,9 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
-            stderr = b''
-            search_args = ['search', '--cached-only']
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
+            stderr = b""
+            search_args = ["search", "--cached-only", "Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -506,9 +519,9 @@ class TestCli(unittest.TestCase):
                 expected_file_count=0,
                 expected_object_count=0
             )
-            # Check that we only touched the index the first time because it didn't exist.
-            with check_file_did_not_change(path / '.codebased' / 'codebased.db'), \
-                    check_file_did_not_change(path / '.codebased' / 'index.faiss'):
+            # Check that we only touched the index the first time because it didn"t exist.
+            with check_file_did_not_change(path / ".codebased" / "codebased.db"), \
+                    check_file_did_not_change(path / ".codebased" / "index.faiss"):
                 check_search_command(
                     args=search_args,
                     root=path,
@@ -526,8 +539,8 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = None
-            stderr = b''
-            search_args = ['search', 'Hello world', '--semantic-search']
+            stderr = b""
+            search_args = ["search", "--semantic-search", "Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -545,8 +558,8 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = None
-            stderr = b''
-            search_args = ['search', 'Hello world', '--full-text-search']
+            stderr = b""
+            search_args = ["search", "Hello world", "--full-text-search"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -564,8 +577,8 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = None
-            stderr = b''
-            search_args = ['search', 'Hello world', '--semantic-search', '--full-text-search']
+            stderr = b""
+            search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
