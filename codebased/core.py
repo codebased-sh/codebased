@@ -1,24 +1,18 @@
 from __future__ import annotations
-
 import base64
 import dataclasses
 import getpass
 import logging
 import os
 import sqlite3
-from functools import cached_property
 from pathlib import Path
 
-import tiktoken
 import toml
-from openai import OpenAI
-from tiktoken import Encoding
 
 from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS, DEFAULT_EDITOR
 from codebased.exceptions import NoApplicationDirectoryException
 from codebased.models import EDITOR
 
-# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 PACKAGE_DIR: Path = Path(__file__).parent
 
@@ -120,46 +114,37 @@ class Settings:
     """
     These are long-lived across various commands, they're settings about settings.
     """
-    application_directory: Path
+    config_directory: Path
     config_file: Path
-    secrets_file: Path
-    database_file: Path
-    indexes_directory: Path
 
     @classmethod
-    def from_application_directory(cls, directory: Path):
+    def from_config_directory(cls, directory: Path):
         return cls(
-            application_directory=directory,
+            config_directory=directory,
             config_file=directory / "config.toml",
-            secrets_file=directory / "secrets.toml",
-            database_file=directory / "codebased.db",
-            indexes_directory=directory / "indexes",
         )
 
     @classmethod
     def default(cls):
-        return cls.from_application_directory(Path.home() / ".codebased")
+        return cls.from_config_directory(Path.home() / ".codebased")
 
     def verify(self):
-        if not all([self.application_directory.exists(), self.config_file.exists(), self.secrets_file.exists()]):
-            raise NoApplicationDirectoryException(self.application_directory)
+        if not all([self.config_directory.exists(), self.config_file.exists()]):
+            raise NoApplicationDirectoryException(self.config_directory)
 
     def create_defaults(self):
         greet()
-        self.application_directory.mkdir(parents=True, exist_ok=True)
+        self.config_directory.mkdir(parents=True, exist_ok=True)
         self.config_file.touch()
         Config.from_prompt().save(self.config_file)
-        self.secrets_file.touch()
-        Secrets.magic().save(self.secrets_file)
+        Secrets.magic().save(self.config_file)
         # Secrets.from_prompt().save(self.secrets_file)
-        self.database_file.touch()
-        self.indexes_directory.mkdir(parents=True, exist_ok=True)
 
     def ensure_ok(self):
         try:
             self.verify()
         except NoApplicationDirectoryException as e:
-            print(f"Looks like you're new here, setting up {self.application_directory}.")
+            print(f"Looks like you're new here, setting up {self.config_directory}.")
             self.create_defaults()
 
 
