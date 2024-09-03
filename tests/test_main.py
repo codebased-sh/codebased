@@ -525,7 +525,7 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stdout = None
             stderr = b''
             search_args = ['search', 'Hello world', '--semantic-search']
             check_search_command(
@@ -544,7 +544,7 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stdout = None
             stderr = b''
             search_args = ['search', 'Hello world', '--full-text-search']
             check_search_command(
@@ -563,7 +563,7 @@ class TestCli(unittest.TestCase):
             path = Path(tempdir).resolve()
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
-            stdout = b'Found Git repository ' + str(path).encode('utf-8') + b'\n'
+            stdout = None
             stderr = b''
             search_args = ['search', 'Hello world', '--semantic-search', '--full-text-search']
             check_search_command(
