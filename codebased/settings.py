@@ -31,7 +31,7 @@ class Settings:
     """
     Combined class for Settings, Config, and Secrets
     """
-    embeddings: EmbeddingsConfig = EmbeddingsConfig()
+    embeddings: EmbeddingsConfig = dataclasses.field(default_factory=EmbeddingsConfig)
     editor: EDITOR = DEFAULT_EDITOR
     OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
 

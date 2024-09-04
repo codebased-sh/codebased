@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "codebased"
-version = "0.2.0"
+version = "0.2.1"
 description = "AI-powered code search for the terminal."
 authors = ["Max Conradt <mhconradt@protonmail.com>"]
 readme = "README.md"
