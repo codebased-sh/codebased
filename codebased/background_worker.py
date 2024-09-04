@@ -39,8 +39,6 @@ def background_worker(
         if shutdown_event.is_set():
             break
         STATS.increment("codebased.background_worker.updates.total")
-        for event in events:
-            STATS.increment("codebased.background_worker.updates.event")
-            STATS.increment(str(event))
+        STATS.increment("codebased.background_worker.updates.events", len(events))
         index_paths(dependencies, config, events, total=False)
         STATS.increment("codebased.background_worker.updates.index")
