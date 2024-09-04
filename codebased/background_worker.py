@@ -3,7 +3,7 @@ import threading
 import time
 from pathlib import Path
 
-from codebased.index import Dependencies, Flags, Config, index_paths
+from codebased.index import Dependencies, Config, index_paths
 from codebased.stats import STATS
 
 
