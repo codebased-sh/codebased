@@ -578,6 +578,25 @@ class TestCli(unittest.TestCase):
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
 
+    def test_full_text_search_bad_characters(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(SIMPLE_REPO_TREE, path)
+            exit_code = 0
+            stdout = None
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
+            search_args = ["search", "'; ksaldjflk;sa", "--full-text-search"]
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=SIMPLE_REPO_TEST_CASE.files,
+                expected_object_count=SIMPLE_REPO_TEST_CASE.objects
+            )
+
     def test_hybrid_search(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()

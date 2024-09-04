@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -107,8 +108,23 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSe
     return semantic_results
 
 
+_quote_fts_re = re.compile(r'\s+|(".*?")')
+
+
+def quote_fts_query(query: str) -> str:
+    if query.count('"') % 2:
+        query += '"'
+    bits = _quote_fts_re.split(query)
+    bits = [b for b in bits if b and b != '""']
+    query = " ".join(
+        '"{}"'.format(bit) if not bit.startswith('"') else bit for bit in bits
+    )
+    return query
+
+
 def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextSearchResult]:
     fts_results = []
+    query = quote_fts_query(flags.query)
     object_rows = dependencies.db.execute(
         """
                     with ranked_results as (
@@ -139,7 +155,7 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextS
                     order by o.rank;
                 """,
         {
-            'query': flags.query,
+            'query': query,
             'top_k': flags.top_k
         }
     ).fetchall()
