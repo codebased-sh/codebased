@@ -1,16 +1,27 @@
-import sys
+from enum import Enum
 
 from rich.syntax import Syntax
+from textual import work, events
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
+from textual.message import Message
 from textual.reactive import var
 from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
-from textual import work, events
-from textual.message import Message
 
 from codebased.editor import open_editor
 from codebased.index import Flags, Config, Dependencies
 from codebased.search import search_once, render_results
+
+
+class Id(str, Enum):
+    PREVIEW_CONTAINER = "preview-container"
+    SEARCH_INPUT = "search-input"
+    RESULTS_LIST = "results-list"
+    RESULTS_CONTAINER = "results-container"
+    PREVIEW = "preview"
+
+    def html(self):
+        return f"#{self.value}"
 
 
 class Codebased(App):
@@ -48,15 +59,15 @@ class Codebased(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Input(placeholder="Enter your search query", id="search-input")
-        with Horizontal(id="results-container"):
-            yield ListView(id="results-list", initial_index=0)
-            with VerticalScroll(id="preview-container"):
-                yield Static(id="preview", expand=True)
+        yield Input(placeholder="Enter your search query", id=Id.SEARCH_INPUT.value)
+        with Horizontal(id=Id.RESULTS_CONTAINER.value):
+            yield ListView(id=Id.RESULTS_LIST.value, initial_index=0)
+            with VerticalScroll(id=Id.PREVIEW_CONTAINER.value):
+                yield Static(id=Id.PREVIEW.value, expand=True)
         yield Footer()
 
     def on_mount(self):
-        self.query_one("#search-input").focus()
+        self.query_one(Id.SEARCH_INPUT.html()).focus()
 
     async def on_input_changed(self, event: Input.Changed):
         query = event.value
@@ -81,7 +92,7 @@ class Codebased(App):
         # Check these keys. Where are they documented?
         focused = self.focused
         if event.key == "enter":
-            if focused and focused.id == "results-list" and isinstance(focused, ListView):
+            if focused and focused.id == Id.RESULTS_LIST.value and isinstance(focused, ListView):
                 result = self.rendered_results[focused.index]
                 config = self.config
                 file_path = config.root / result.obj.path
@@ -89,13 +100,16 @@ class Codebased(App):
                 with self.suspend():
                     open_editor(self.dependencies.settings.editor, file=file_path, row=row, column=col)
             else:
-                self.query_one("#results-list", ListView).focus()
+                self.query_one(Id.RESULTS_LIST.html(), ListView).focus()
             return
         elif event.key == "escape":
-            self.query_one("#search-input", Input).focus()
+            self.query_one(Id.SEARCH_INPUT.html(), Input).focus()
             return
         elif event.key == "tab":
-            self.query_one("#preview", Static).focus()
+            self.query_one(Id.PREVIEW.html(), Static).focus()
+        elif event.key == "down":
+            if focused and focused.id == Id.RESULTS_CONTAINER.value:
+                self.query_one(Id.RESULTS_LIST.html(), ListView).focus()
 
     async def on_codebased_search_completed(self, message: SearchCompleted):
         self.rendered_results = message.results
@@ -111,7 +125,7 @@ class Codebased(App):
             self.update_preview(self.rendered_results[0])
 
     async def clear_results(self):
-        results_list = self.query_one("#results-list", ListView)
+        results_list = self.query_one(Id.RESULTS_LIST.html(), ListView)
         await results_list.clear()
         return results_list
 
@@ -121,7 +135,7 @@ class Codebased(App):
         self.update_preview(result)
 
     def update_preview(self, result):
-        preview = self.query_one("#preview", Static)
+        preview = self.query_one(Id.PREVIEW.html(), Static)
         # WARNING: The following code assumes that the coordinates are correct and represent
         # the entire object. This might not always be the case, especially for multi-line objects.
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
@@ -144,4 +158,4 @@ class Codebased(App):
 
     def watch_show_results(self, show_results: bool):
         """Called when show_results is modified."""
-        self.query_one("#results-container").display = show_results
+        self.query_one(Id.RESULTS_CONTAINER.html()).display = show_results
