@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import os
 import re
@@ -14,8 +15,9 @@ from typing import Union
 
 import faiss
 
-from codebased.index import find_root_git_repository
+from codebased.index import find_root_git_repository, Flags, Config, Dependencies, index_paths
 from codebased.main import VERSION
+from codebased.settings import Settings
 
 SUBMODULE_REPO_TREE = (Path('.'), (
     (Path('README.md'), b'Hello, world!'),
@@ -321,7 +323,7 @@ class TestCli(unittest.TestCase):
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
             stderr = b""
-            search_args = ["search" ,"Hello world"]
+            search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
                 root=path,
@@ -590,3 +592,45 @@ class TestCli(unittest.TestCase):
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects
             )
+
+
+async def my_func():
+    await asyncio.sleep(0.1)
+    return True
+
+
+class AppTestBase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        super().setUp()
+        self.tempdir = tempfile.TemporaryDirectory(delete=False)
+        path = Path(self.tempdir.name).resolve()
+        self.flags = Flags(
+            directory=path,
+            rebuild_faiss_index=False,
+            cached_only=False,
+            query="Hello world",
+            background=False,
+            stats=False,
+            semantic=True,
+            full_text_search=True,
+            top_k=10
+        )
+        self.settings = Settings()
+        self.config = Config(flags=self.flags)
+        self.dependencies = Dependencies(
+            config=self.config,
+            settings=self.settings
+        )
+        index_paths(
+            self.dependencies,
+            self.config,
+            [self.config.root],
+            total=True
+        )
+
+    def tearDown(self):
+        super().tearDown()
+        self.tempdir.cleanup()
+        self.dependencies.db.close()
+
+

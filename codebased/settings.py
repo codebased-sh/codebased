@@ -45,7 +45,8 @@ class Settings:
 
     def __post_init__(self):
         if not self.OPENAI_API_KEY:
-            raise ValueError("Codebased requires an OpenAI API key for now. Ask Max if you'd like one to test with.")
+            raise ValueError("Codebased requires an OpenAI API key for now."
+                             "Join the Discord to access to a key for testing.")
 
     @staticmethod
     def verify():

@@ -6,6 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+import math
 import numpy as np
 
 from codebased.embeddings import create_ephemeral_embedding
@@ -29,6 +30,10 @@ class FullTextSearchResult:
     content_sha256: bytes
 
 
+def l2_is_close(l2: float) -> bool:
+    return l2 < math.sqrt(2) * .9
+
+
 @dataclasses.dataclass
 class CombinedSearchResult:
     obj: Object
@@ -38,14 +43,20 @@ class CombinedSearchResult:
 
     @property
     def _sort_key(self) -> tuple[float, float]:
+        # Exact + semantic matches first.
         if self.l2 is not None and self.bm25 is not None:
-            return 0, self.l2 * self.bm25
-        elif self.bm25 is not None:
-            return 1, self.bm25
-        elif self.l2 is not None:
-            return 2, self.l2
-        else:
-            return 3, 0
+            return 0, self.l2
+        # Close semantic matches next.
+        if self.l2 is not None and self.l2 < math.sqrt(2) * .9:
+            return 1, self.l2
+        # All exact matches next.
+        if self.bm25 is not None:
+            return 2, self.bm25
+        # All semantic matches next.
+        if self.l2 is not None:
+            return 3, self.l2
+        # This should never happen.
+        return float('inf'), 0
 
     def __lt__(self, other: CombinedSearchResult):
         return self._sort_key < other._sort_key

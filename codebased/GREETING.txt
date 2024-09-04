@@ -1,7 +1,3 @@
-Hello and welcome to Codebased, a suite of tools to make software development fast and painless.
 I'm Max Conradt, founder of Codebased.
-I'm creating Codebased because I love writing software and love people who write software.
 If you ever need any help, text me at +1 (913) 808-7343. For now, I will even help you write your code.
-That's my real phone number, because Codebased will never be anything without its users.
-You can also check out the Discord: https://discord.gg/CA6Jzn2S. I'll be more responsive on Discord because I don't
-look at my phone while I'm working, but am on Discord when I'm working.
+You can also check out the Discord: https://discord.gg/CA6Jzn2S.

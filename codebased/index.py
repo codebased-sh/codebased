@@ -299,7 +299,7 @@ def index_paths(
                             from file 
                             where path = :path;
                         """,
-                        (str(relative_path),)
+                        {'path': str(relative_path)}
                     ).fetchone()
 
                     stat = path.stat()

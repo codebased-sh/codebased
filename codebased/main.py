@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Optional
 
 import typer
 
+from codebased.background_worker import background_worker
+from codebased.filesystem import get_filesystem_events_queue
 from codebased.index import Config, Dependencies, index_paths, Flags
 from codebased.search import search_once, print_results
 from codebased.settings import Settings
 from codebased.stats import STATS
 from codebased.tui import Codebased
 
-VERSION = "0.0.1"
+VERSION = "0.2.0"
 
 cli = typer.Typer(
-    name="Codebased",
+    name="Codebased CLI",
 )
 
 
@@ -84,26 +87,43 @@ def search(
             help="Number of results to return.",
             min=1,
         ),
+        background: bool = typer.Option(
+            False,
+            "--background/--no-background",
+            help="Run in the background.",
+        ),
 ):
     flags = Flags(
         directory=directory,
         rebuild_faiss_index=rebuild_faiss_index,
         cached_only=cached_only,
         query=query,
-        background=False,
+        background=background,
         stats=stats,
         semantic=semantic,
         full_text_search=full_text,
-        top_k=top_k
+        top_k=top_k,
     )
     config = Config(flags=flags)
     settings = Settings.always()
     dependencies = Dependencies(config=config, settings=settings)
     __ = config.root, dependencies.db, dependencies.index
+    fs_events = get_filesystem_events_queue(config.root)
+    shutdown_event = threading.Event()
+    if flags.background:
+        thread = threading.Thread(
+            target=background_worker,
+            args=(dependencies, flags, config, shutdown_event, fs_events),
+            daemon=True
+        )
+    else:
+        thread = None
 
     try:
         if not flags.cached_only:
             index_paths(dependencies, config, [config.root], total=True)
+        if thread is not None:
+            thread.start()
         if flags.query:
             results = search_once(dependencies, flags)
             print_results(config, results)
@@ -111,6 +131,9 @@ def search(
             Codebased(flags=flags, config=config, dependencies=dependencies).run()
     finally:
         dependencies.db.close()
+        shutdown_event.set()
+        if thread is not None:
+            thread.join()
     if flags.stats:
         print(STATS.dumps())
 
