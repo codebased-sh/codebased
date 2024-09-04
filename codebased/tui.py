@@ -71,7 +71,7 @@ class Codebased(App):
         yield Footer()
 
     def on_mount(self):
-        self.query_one(f"#{Id.SEARCH_INPUT}").focus()
+        self.query_one("#" + Id.SEARCH_INPUT.value).focus()
 
     async def on_input_changed(self, event: Input.Changed):
         query = event.value
@@ -107,7 +107,7 @@ class Codebased(App):
             result = self.rendered_results[focused.index]
             self.open_result_in_editor(result)
         elif focused and focused.id == Id.SEARCH_INPUT.value:
-            self.query_one(f"#{Id.RESULTS_LIST}", ListView).focus()
+            self.query_one("#" + Id.RESULTS_LIST.value, ListView).focus()
 
     def open_result_in_editor(self, result: RenderedResult):
         file_path = self.config.root / result.obj.path
@@ -118,14 +118,14 @@ class Codebased(App):
             open_editor(editor, file=file_path, row=row, column=col)
 
     def action_focus_search(self):
-        self.query_one(f"#{Id.SEARCH_INPUT}", Input).focus()
+        self.query_one("#" + Id.SEARCH_INPUT.value, Input).focus()
 
     def action_focus_preview(self):
-        self.query_one(f"#{Id.PREVIEW}", Static).focus()
+        self.query_one("#" + Id.PREVIEW.value, Static).focus()
 
     def action_focus_results(self):
         if self.focused and self.focused.id == Id.SEARCH_INPUT.value:
-            self.query_one(f"#{Id.RESULTS_LIST}", ListView).focus()
+            self.query_one("#" + Id.RESULTS_LIST.value, ListView).focus()
 
     async def on_codebased_search_completed(self, message: SearchCompleted):
         self.rendered_results = message.results
@@ -141,7 +141,7 @@ class Codebased(App):
             self.update_preview(self.rendered_results[0])
 
     async def clear_results(self):
-        results_list = self.query_one(f"#{Id.RESULTS_LIST}", ListView)
+        results_list = self.query_one("#" + Id.RESULTS_LIST.value, ListView)
         await results_list.clear()
         return results_list
 
@@ -151,7 +151,7 @@ class Codebased(App):
         self.update_preview(result)
 
     def update_preview(self, result):
-        preview = self.query_one(f"#{Id.PREVIEW}", Static)
+        preview = self.query_one("#" + Id.PREVIEW.value, Static)
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
         try:
             code = result.file_bytes.decode('utf-8')
@@ -171,4 +171,4 @@ class Codebased(App):
         preview.update(syntax)
 
     def watch_show_results(self, show_results: bool):
-        self.query_one(f"#{Id.RESULTS_CONTAINER}").display = show_results
+        self.query_one("#" + Id.RESULTS_CONTAINER.value).display = show_results
