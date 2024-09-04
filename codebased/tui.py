@@ -3,6 +3,8 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.reactive import var
 from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
+from textual import work
+from textual.message import Message
 
 from codebased.index import Flags, Config, Dependencies
 from codebased.search import search_once, render_results
@@ -53,11 +55,25 @@ class Codebased(App):
     def on_mount(self):
         self.query_one("#search-input").focus()
 
-    async def on_input_submitted(self, event: Input.Submitted):
+    async def on_input_changed(self, event: Input.Changed):
         query = event.value
+        if len(query) >= 3:
+            self.search_background(event.value)
+
+    @work(exclusive=True, thread=True)
+    def search_background(self, query: str):
         self.flags.query = query
         results = search_once(self.dependencies, self.flags)
-        self.rendered_results = render_results(self.config, results)
+        rendered_results = render_results(self.config, results)
+        self.post_message(self.SearchCompleted(rendered_results))
+
+    class SearchCompleted(Message):
+        def __init__(self, results):
+            self.results = results
+            super().__init__()
+
+    async def on_codebased_search_completed(self, message: SearchCompleted):
+        self.rendered_results = message.results
 
         results_list = self.query_one("#results-list", ListView)
         await results_list.clear()
@@ -88,7 +104,6 @@ class Codebased(App):
             lexer,
             theme="monokai",
             line_numbers=True,
-            # start_line=start_line + 1,
             line_range=(min(highlight_lines), max(highlight_lines)),
             highlight_lines=highlight_lines,
             word_wrap=True
