@@ -32,7 +32,7 @@ textual = "^0.79.1"
 typer = "^0.12.5"
 
 [tool.poetry.scripts]
-codebased = "codebased.__main__:cli"
+codebased = "codebased.main:cli"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^7.0"
