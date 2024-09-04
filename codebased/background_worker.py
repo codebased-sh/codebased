@@ -29,6 +29,7 @@ def background_worker(
                 events.append(event_queue.get(block=False))
         except queue.Empty:
             pass
+        # Don't create events when we write to the index, especially from this thread.
         events = [event for event in events if not event.is_relative_to(config.codebased_directory)]
         if not events:
             continue

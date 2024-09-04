@@ -594,11 +594,6 @@ class TestCli(unittest.TestCase):
             )
 
 
-async def my_func():
-    await asyncio.sleep(0.1)
-    return True
-
-
 class AppTestBase(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         super().setUp()
@@ -632,5 +627,3 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
         super().tearDown()
         self.tempdir.cleanup()
         self.dependencies.db.close()
-
-
