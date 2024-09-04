@@ -632,7 +632,7 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
             total=True
         )
 
-    async def test_background_worker(self):
+    async def test_search(self):
         async with self.app.run_test() as pilot:
             query = "Hello world"
             for i in range(11):
@@ -662,8 +662,6 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
             await pilot.press("escape")
             focused = self.app.focused
             self.assertEqual(focused.id, Id.SEARCH_INPUT.value)
-
-
 
     def tearDown(self):
         super().tearDown()
