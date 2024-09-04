@@ -202,6 +202,7 @@ def deserialize_object_row(object_row: sqlite3.Row) -> Object:
 @dataclasses.dataclass
 class RenderedResult(CombinedSearchResult):
     content: str
+    file_bytes: bytes
 
 
 def render_result(
@@ -210,13 +211,21 @@ def render_result(
 ) -> RenderedResult | None:
     abs_path = config.root / result.obj.path
     try:
+        # TODO: Memoize, at least within a search result set.
         underlying_file_bytes = abs_path.read_bytes()
         actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
         if result.content_sha256 != actual_sha256:
             return None
         lines = underlying_file_bytes.split(b'\n')
         rendered = render_object(result.obj, in_lines=lines)
-        return RenderedResult(**dataclasses.asdict(result), content=rendered)
+        return RenderedResult(
+            obj=result.obj,
+            l2=result.l2,
+            bm25=result.bm25,
+            content_sha256=result.content_sha256,
+            content=rendered,
+            file_bytes=underlying_file_bytes
+        )
     except FileNotFoundError:
         return None
 

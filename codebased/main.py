@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 import typer
 
@@ -8,6 +9,7 @@ from codebased.index import Config, Dependencies, index_paths, Flags
 from codebased.search import search_once, print_results
 from codebased.settings import Settings
 from codebased.stats import STATS
+from codebased.tui import Codebased
 
 VERSION = "0.0.1"
 
@@ -37,7 +39,7 @@ def main(
 
 @cli.command("search")
 def search(
-        query: str = typer.Argument(..., help="The search query"),
+        query: Optional[str] = typer.Argument(None, help="The search query"),
         directory: Path = typer.Option(
             Path.cwd(),
             "-d",
@@ -107,6 +109,8 @@ def search(
         if flags.query:
             results = search_once(dependencies, flags)
             print_results(config, results)
+        else:
+            Codebased(flags=flags, config=config, dependencies=dependencies).run()
     finally:
         dependencies.db.close()
     if flags.stats:
