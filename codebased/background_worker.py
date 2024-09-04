@@ -9,13 +9,18 @@ from codebased.stats import STATS
 
 def background_worker(
         dependencies: Dependencies,
-        flags: Flags,
         config: Config,
         shutdown_event: threading.Event,
-        event_queue: queue.Queue[Path],
+        event_queue: queue.Queue[Path]
 ):
     def pre_filter(event: Path) -> bool:
-        return not event.is_relative_to(config.codebased_directory) and not event.is_relative_to(config.root / '.git')
+        if event.is_relative_to(config.codebased_directory):
+            return False
+        if event.is_relative_to(config.git_directory):
+            return False
+        if dependencies.gitignore(event):
+            return False
+        return True
 
     while not shutdown_event.is_set():
         # Wait indefinitely for an event.

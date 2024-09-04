@@ -151,6 +151,10 @@ class Config:
         return git_repository_dir
 
     @property
+    def git_directory(self) -> Path:
+        return self.root / '.git'
+
+    @property
     def codebased_directory(self) -> Path:
         directory = self.root / '.codebased'
         directory.mkdir(exist_ok=True)
