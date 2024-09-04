@@ -1,3 +1,4 @@
+import contextlib
 from enum import Enum
 
 from rich.syntax import Syntax
@@ -8,9 +9,9 @@ from textual.message import Message
 from textual.reactive import var
 from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
 
-from codebased.editor import open_editor
+from codebased.editor import open_editor, suspends
 from codebased.index import Flags, Config, Dependencies
-from codebased.search import search_once, render_results
+from codebased.search import search_once, render_results, RenderedResult
 
 
 class Id(str, Enum):
@@ -20,12 +21,14 @@ class Id(str, Enum):
     RESULTS_CONTAINER = "results-container"
     PREVIEW = "preview"
 
-    def html(self):
-        return f"#{self.value}"
-
 
 class Codebased(App):
-    BINDINGS = [("q", "quit", "Quit")]
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("escape", "focus_search", "Focus search"),
+        ("tab", "focus_preview", "Focus preview"),
+        ("down", "focus_results", "Focus results"),
+    ]
 
     show_results = var(False)
 
@@ -67,7 +70,7 @@ class Codebased(App):
         yield Footer()
 
     def on_mount(self):
-        self.query_one(Id.SEARCH_INPUT.html()).focus()
+        self.query_one(f"#{Id.SEARCH_INPUT}").focus()
 
     async def on_input_changed(self, event: Input.Changed):
         query = event.value
@@ -88,28 +91,40 @@ class Codebased(App):
             self.results = results
             super().__init__()
 
-    def on_key(self, event: events.Key) -> None:
-        # Check these keys. Where are they documented?
-        focused = self.focused
+    def on_key(self, event: events.Key):
         if event.key == "enter":
-            if focused and focused.id == Id.RESULTS_LIST.value and isinstance(focused, ListView):
-                result = self.rendered_results[focused.index]
-                config = self.config
-                file_path = config.root / result.obj.path
-                row, col = result.obj.coordinates[0]
-                with self.suspend():
-                    open_editor(self.dependencies.settings.editor, file=file_path, row=row, column=col)
-            else:
-                self.query_one(Id.RESULTS_LIST.html(), ListView).focus()
-            return
-        elif event.key == "escape":
-            self.query_one(Id.SEARCH_INPUT.html(), Input).focus()
-            return
-        elif event.key == "tab":
-            self.query_one(Id.PREVIEW.html(), Static).focus()
-        elif event.key == "down":
-            if focused and focused.id == Id.RESULTS_CONTAINER.value:
-                self.query_one(Id.RESULTS_LIST.html(), ListView).focus()
+            self.select_result()
+        elif event.key == "up":
+            focused = self.focused
+            if isinstance(focused, ListView) and focused.id == Id.RESULTS_LIST.value:
+                if focused.index == 0:
+                    self.action_focus_search()
+
+    def select_result(self):
+        focused = self.focused
+        if isinstance(focused, ListView) and focused.id == Id.RESULTS_LIST.value:
+            result = self.rendered_results[focused.index]
+            self.open_result_in_editor(result)
+        elif focused and focused.id == Id.SEARCH_INPUT.value:
+            self.query_one(f"#{Id.RESULTS_LIST}", ListView).focus()
+
+    def open_result_in_editor(self, result: RenderedResult):
+        file_path = self.config.root / result.obj.path
+        row, col = result.obj.coordinates[0]
+        contextlib.nullcontext()
+        editor = self.dependencies.settings.editor
+        with self.suspend() if suspends(editor) else contextlib.nullcontext():
+            open_editor(editor, file=file_path, row=row, column=col)
+
+    def action_focus_search(self):
+        self.query_one(f"#{Id.SEARCH_INPUT}", Input).focus()
+
+    def action_focus_preview(self):
+        self.query_one(f"#{Id.PREVIEW}", Static).focus()
+
+    def action_focus_results(self):
+        if self.focused and self.focused.id == Id.SEARCH_INPUT.value:
+            self.query_one(f"#{Id.RESULTS_LIST}", ListView).focus()
 
     async def on_codebased_search_completed(self, message: SearchCompleted):
         self.rendered_results = message.results
@@ -125,7 +140,7 @@ class Codebased(App):
             self.update_preview(self.rendered_results[0])
 
     async def clear_results(self):
-        results_list = self.query_one(Id.RESULTS_LIST.html(), ListView)
+        results_list = self.query_one(f"#{Id.RESULTS_LIST}", ListView)
         await results_list.clear()
         return results_list
 
@@ -135,16 +150,14 @@ class Codebased(App):
         self.update_preview(result)
 
     def update_preview(self, result):
-        preview = self.query_one(Id.PREVIEW.html(), Static)
-        # WARNING: The following code assumes that the coordinates are correct and represent
-        # the entire object. This might not always be the case, especially for multi-line objects.
+        preview = self.query_one(f"#{Id.PREVIEW}", Static)
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
         try:
             code = result.file_bytes.decode('utf-8')
         except UnicodeDecodeError:
             code = result.file_bytes.decode('utf-16')
         lexer = Syntax.guess_lexer(str(result.obj.path), code)
-        highlight_lines = set(range(start_line + 1, end_line + 1 + 1))
+        highlight_lines = set(range(start_line + 1, end_line + 2))
         syntax = Syntax(
             code,
             lexer,
@@ -157,5 +170,4 @@ class Codebased(App):
         preview.update(syntax)
 
     def watch_show_results(self, show_results: bool):
-        """Called when show_results is modified."""
-        self.query_one(Id.RESULTS_CONTAINER.html()).display = show_results
+        self.query_one(f"#{Id.RESULTS_CONTAINER}").display = show_results
