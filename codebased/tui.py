@@ -63,7 +63,6 @@ class Codebased(App):
         await results_list.clear()
         for result in self.rendered_results:
             obj = result.obj
-            print(obj)
             item_text = f"{str(obj.path)}" if obj.kind == 'file' else f"{str(obj.path)} {obj.name}"
             await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
