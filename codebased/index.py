@@ -6,10 +6,12 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import typing as T
 from collections import namedtuple
 from functools import cached_property
 from pathlib import Path
+from typing import Generic, TypeVar, Dict
 
 import faiss
 import gitignore_parser
@@ -162,11 +164,42 @@ class Config:
         return self.flags.rebuild_faiss_index or not self.index_path.exists()
 
 
+K = TypeVar('K')
+V = TypeVar('V')
+
+
+@dataclasses.dataclass
+class ThreadSafeCache(Generic[K, V]):
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+    _cache: Dict[K, V] = dataclasses.field(default_factory=dict)
+
+    def __getitem__(self, key: K) -> V:
+        with self._lock:
+            return self._cache[key]
+
+    def __setitem__(self, key: K, value: V) -> None:
+        with self._lock:
+            self._cache[key] = value
+
+    def __delitem__(self, key: K) -> None:
+        with self._lock:
+            del self._cache[key]
+
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
+    def get(self, key: K, default: V = None) -> V:
+        with self._lock:
+            return self._cache.get(key, default)
+
+
 @dataclasses.dataclass
 class Dependencies:
     # config must be passed in explicitly.
     config: Config
     settings: Settings
+    search_cache: ThreadSafeCache[str, list] = dataclasses.field(default_factory=ThreadSafeCache)
 
     @cached_property
     def openai_client(self) -> "OpenAI":
@@ -554,6 +587,7 @@ def index_paths(
                     index.remove_ids(np.array(delete_ids))
                 delete_ids.clear()
             elif isinstance(event, Events.Commit):
+                dependencies.search_cache.clear()
                 db.commit()
                 faiss.write_index(index, str(config.index_path))
             elif isinstance(event, Events.DeleteNotVisited):

@@ -190,10 +190,16 @@ def merge_results(
 
 
 def search_once(dependencies: Dependencies, flags: Flags) -> list[CombinedSearchResult]:
+    try:
+        return dependencies.search_cache[flags.query]
+    except KeyError:
+        pass
     semantic_results = semantic_search(dependencies, flags) if flags.semantic else []
     full_text_results = full_text_search(dependencies, flags) if flags.full_text_search else []
     results = merge_results(semantic_results, full_text_results)
-    return results[:flags.top_k]
+    results = results[:flags.top_k]
+    dependencies.search_cache[flags.query] = results
+    return results
 
 
 def deserialize_object_row(object_row: sqlite3.Row) -> Object:

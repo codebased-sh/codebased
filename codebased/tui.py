@@ -1,4 +1,5 @@
 import contextlib
+import dataclasses
 from enum import Enum
 
 from rich.syntax import Syntax
@@ -81,7 +82,7 @@ class Codebased(App):
 
     @work(exclusive=True, thread=True)
     def search_background(self, query: str):
-        self.flags.query = query
+        self.flags = dataclasses.replace(self.flags, query=query)
         results = search_once(self.dependencies, self.flags)
         rendered_results = render_results(self.config, results)
         self.post_message(self.SearchCompleted(rendered_results))
@@ -161,7 +162,7 @@ class Codebased(App):
         syntax = Syntax(
             code,
             lexer,
-            theme="vs",
+            theme="dracula",
             line_numbers=True,
             line_range=(min(highlight_lines), max(highlight_lines)),
             highlight_lines=highlight_lines,
