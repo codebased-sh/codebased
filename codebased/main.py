@@ -69,15 +69,13 @@ def search(
         ),
         semantic: bool = typer.Option(
             True,
-            "--semantic-search",
+            "--semantic-search/--no-semantic-search",
             help="Use semantic search.",
-            is_flag=True,
         ),
         full_text: bool = typer.Option(
             True,
-            "--full-text-search",
+            "--full-text-search/--no-full-text-search",
             help="Use full-text search.",
-            is_flag=True,
         ),
         top_k: int = typer.Option(
             10,
