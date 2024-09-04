@@ -45,7 +45,7 @@ class Codebased(App):
         yield Header()
         yield Input(placeholder="Enter your search query", id="search-input")
         with Horizontal(id="results-container"):
-            yield ListView(id="results-list")
+            yield ListView(id="results-list", initial_index=0)
             with VerticalScroll(id="preview-container"):
                 yield Static(id="preview", expand=True)
         yield Footer()
@@ -53,19 +53,19 @@ class Codebased(App):
     def on_mount(self):
         self.query_one("#search-input").focus()
 
-    def on_input_submitted(self, event: Input.Submitted):
+    async def on_input_submitted(self, event: Input.Submitted):
         query = event.value
         self.flags.query = query
         results = search_once(self.dependencies, self.flags)
         self.rendered_results = render_results(self.config, results)
 
         results_list = self.query_one("#results-list", ListView)
-        results_list.clear()
+        await results_list.clear()
         for result in self.rendered_results:
             obj = result.obj
             print(obj)
-            item_text = f"{str(obj.path)} {obj.name}"
-            results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
+            item_text = f"{str(obj.path)}" if obj.kind == 'file' else f"{str(obj.path)} {obj.name}"
+            await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
 
@@ -77,16 +77,21 @@ class Codebased(App):
         # WARNING: The following code assumes that the coordinates are correct and represent
         # the entire object. This might not always be the case, especially for multi-line objects.
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
-        code_lines = result.file_bytes.decode('utf-8').splitlines()[start_line - 1:end_line]
-        code = '\n'.join(code_lines)
+        try:
+            code = result.file_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            code = result.file_bytes.decode('utf-16')
 
+        lexer = Syntax.guess_lexer(str(result.obj.path), code)
+        highlight_lines = set(range(start_line + 1, end_line + 1 + 1))
         syntax = Syntax(
             code,
-            result.obj.language,
+            lexer,
             theme="monokai",
             line_numbers=True,
-            start_line=start_line + 1,
-            highlight_lines=set(range(start_line + 1, end_line + 1 + 1)),
+            # start_line=start_line + 1,
+            line_range=(min(highlight_lines), max(highlight_lines)),
+            highlight_lines=highlight_lines,
             word_wrap=True
         )
         preview.update(syntax)
@@ -94,7 +99,3 @@ class Codebased(App):
     def watch_show_results(self, show_results: bool):
         """Called when show_results is modified."""
         self.query_one("#results-container").display = show_results
-
-    def on_unmount(self):
-        if self.dependencies:
-            self.dependencies.db.close()
