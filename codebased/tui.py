@@ -59,6 +59,8 @@ class Codebased(App):
         query = event.value
         if len(query) >= 3:
             self.search_background(event.value)
+        else:
+            await self.clear_results()
 
     @work(exclusive=True, thread=True)
     def search_background(self, query: str):
@@ -75,14 +77,18 @@ class Codebased(App):
     async def on_codebased_search_completed(self, message: SearchCompleted):
         self.rendered_results = message.results
 
-        results_list = self.query_one("#results-list", ListView)
-        await results_list.clear()
+        results_list = await self.clear_results()
         for result in self.rendered_results:
             obj = result.obj
             item_text = f"{str(obj.path)}" if obj.kind == 'file' else f"{str(obj.path)} {obj.name}"
             await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
+
+    async def clear_results(self):
+        results_list = self.query_one("#results-list", ListView)
+        await results_list.clear()
+        return results_list
 
     def on_list_view_selected(self, event: ListView.Selected):
         result_id = int(event.item.id.split("-")[1])
