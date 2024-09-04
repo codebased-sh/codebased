@@ -298,7 +298,7 @@ class TestCli(unittest.TestCase):
             SIMPLE_REPO_TEST_CASE.create(path)
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             check_search_command(
                 args=["search", "Hello world"],
                 root=path,
@@ -326,7 +326,7 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
@@ -398,7 +398,7 @@ class TestCli(unittest.TestCase):
                 b"Found Git repository " + str(path).encode("utf-8") + b".*",
                 re.ASCII | re.DOTALL
             )
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
 
             # Test with -d argument
             workdir = Path.cwd()
@@ -434,7 +434,7 @@ class TestCli(unittest.TestCase):
             gitignore_path.write_text("*.py\n")
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             check_search_command(
                 args=["search", "Hello world"],
                 root=path,
@@ -454,7 +454,7 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
@@ -483,7 +483,7 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,
@@ -502,7 +502,7 @@ class TestCli(unittest.TestCase):
                     root=path,
                     cwd=path,
                     exit_code=exit_code,
-                    stderr=stderr,
+                    stderr=b"",
                     stdout=stdout,
                     expected_file_count=SIMPLE_REPO_TEST_CASE.files,
                     expected_object_count=SIMPLE_REPO_TEST_CASE.objects
@@ -546,7 +546,7 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = None
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             search_args = ["search", "--semantic-search", "Hello world"]
             check_search_command(
                 args=search_args,
@@ -565,7 +565,7 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = None
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             search_args = ["search", "Hello world", "--full-text-search"]
             check_search_command(
                 args=search_args,
@@ -584,7 +584,7 @@ class TestCli(unittest.TestCase):
             create_tree(SIMPLE_REPO_TREE, path)
             exit_code = 0
             stdout = None
-            stderr = b""
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
             search_args = ["search", "Hello world"]
             check_search_command(
                 args=search_args,

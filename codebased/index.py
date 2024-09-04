@@ -17,6 +17,7 @@ import faiss
 import gitignore_parser
 import numpy as np
 import tiktoken
+from tqdm import tqdm
 
 from codebased.settings import EmbeddingsConfig
 
@@ -292,6 +293,9 @@ def index_paths(
     if total:
         events.insert(3, Events.DeleteNotVisited(paths_visited))
 
+    # Why do we need to put space before file?
+    pbar = tqdm(total=None, desc=f"Indexing {config.root.name}", unit=" file")
+
     try:
         while events:
             event = events.pop()
@@ -317,6 +321,7 @@ def index_paths(
                 path = event.path
                 assert isinstance(path, Path)
                 relative_path = path.relative_to(config.root)
+                pbar.update(1)
                 try:
                     if not (path.exists() and path.is_file()):
                         raise FileExceptions.Delete()
