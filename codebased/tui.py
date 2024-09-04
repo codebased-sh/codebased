@@ -1,11 +1,14 @@
+import sys
+
 from rich.syntax import Syntax
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.reactive import var
 from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
-from textual import work
+from textual import work, events
 from textual.message import Message
 
+from codebased.editor import open_editor
 from codebased.index import Flags, Config, Dependencies
 from codebased.search import search_once, render_results
 
@@ -74,6 +77,26 @@ class Codebased(App):
             self.results = results
             super().__init__()
 
+    def on_key(self, event: events.Key) -> None:
+        # Check these keys. Where are they documented?
+        focused = self.focused
+        if event.key == "enter":
+            if focused and focused.id == "results-list" and isinstance(focused, ListView):
+                result = self.rendered_results[focused.index]
+                config = self.config
+                file_path = config.root / result.obj.path
+                row, col = result.obj.coordinates[0]
+                with self.suspend():
+                    open_editor(self.dependencies.settings.editor, file=file_path, row=row, column=col)
+            else:
+                self.query_one("#results-list", ListView).focus()
+            return
+        elif event.key == "escape":
+            self.query_one("#search-input", Input).focus()
+            return
+        elif event.key == "tab":
+            self.query_one("#preview", Static).focus()
+
     async def on_codebased_search_completed(self, message: SearchCompleted):
         self.rendered_results = message.results
 
@@ -84,6 +107,8 @@ class Codebased(App):
             await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
+        if self.rendered_results:
+            self.update_preview(self.rendered_results[0])
 
     async def clear_results(self):
         results_list = self.query_one("#results-list", ListView)
@@ -93,8 +118,10 @@ class Codebased(App):
     def on_list_view_selected(self, event: ListView.Selected):
         result_id = int(event.item.id.split("-")[1])
         result = next(r for r in self.rendered_results if r.obj.id == result_id)
-        preview = self.query_one("#preview", Static)
+        self.update_preview(result)
 
+    def update_preview(self, result):
+        preview = self.query_one("#preview", Static)
         # WARNING: The following code assumes that the coordinates are correct and represent
         # the entire object. This might not always be the case, especially for multi-line objects.
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
@@ -102,13 +129,12 @@ class Codebased(App):
             code = result.file_bytes.decode('utf-8')
         except UnicodeDecodeError:
             code = result.file_bytes.decode('utf-16')
-
         lexer = Syntax.guess_lexer(str(result.obj.path), code)
         highlight_lines = set(range(start_line + 1, end_line + 1 + 1))
         syntax = Syntax(
             code,
             lexer,
-            theme="monokai",
+            theme="vs",
             line_numbers=True,
             line_range=(min(highlight_lines), max(highlight_lines)),
             highlight_lines=highlight_lines,
