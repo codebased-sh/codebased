@@ -585,7 +585,7 @@ class TestCli(unittest.TestCase):
             exit_code = 0
             stdout = None
             stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
-            search_args = ["search", "'; ksaldjflk;sa", "--full-text-search"]
+            search_args = ["search", """print('print("Hello world");');""", "--full-text-search"]
             check_search_command(
                 args=search_args,
                 root=path,
