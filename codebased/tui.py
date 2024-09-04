@@ -64,8 +64,8 @@ class Codebased(App):
         for result in self.rendered_results:
             obj = result.obj
             print(obj)
-            item_text = f"{obj.path.name}:{obj.coordinates[0][0]} - {obj.kind} ({obj.language})"
-            results_list.append(ListItem(item_text, id=f"result-{obj.id}"))
+            item_text = f"{str(obj.path)} {obj.name}"
+            results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
 
@@ -85,8 +85,8 @@ class Codebased(App):
             result.obj.language,
             theme="monokai",
             line_numbers=True,
-            start_line=start_line,
-            highlight_lines=set(range(start_line, end_line + 1)),
+            start_line=start_line + 1,
+            highlight_lines=set(range(start_line + 1, end_line + 1 + 1)),
             word_wrap=True
         )
         preview.update(syntax)
