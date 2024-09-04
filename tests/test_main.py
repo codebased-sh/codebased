@@ -14,10 +14,14 @@ from pathlib import Path
 from typing import Union
 
 import faiss
+from rich.syntax import Syntax
+from textual.widgets import Input, ListView, Static
 
+from codebased.filesystem import get_filesystem_events_queue
 from codebased.index import find_root_git_repository, Flags, Config, Dependencies, index_paths
 from codebased.main import VERSION
 from codebased.settings import Settings
+from codebased.tui import Codebased, Id
 
 SUBMODULE_REPO_TREE = (Path('.'), (
     (Path('README.md'), b'Hello, world!'),
@@ -597,8 +601,9 @@ class TestCli(unittest.TestCase):
 class AppTestBase(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         super().setUp()
-        self.tempdir = tempfile.TemporaryDirectory(delete=False)
+        self.tempdir = tempfile.TemporaryDirectory()
         path = Path(self.tempdir.name).resolve()
+        SIMPLE_REPO_TEST_CASE.create(path)
         self.flags = Flags(
             directory=path,
             rebuild_faiss_index=False,
@@ -616,12 +621,49 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
             config=self.config,
             settings=self.settings
         )
+        self.setUpIndex()
+        self.app = Codebased(flags=self.flags, config=self.config, dependencies=self.dependencies)
+
+    def setUpIndex(self):
         index_paths(
             self.dependencies,
             self.config,
             [self.config.root],
             total=True
         )
+
+    async def test_background_worker(self):
+        async with self.app.run_test() as pilot:
+            query = "Hello world"
+            for i in range(11):
+                this = query[i]
+                await pilot.press(this)
+                so_far = query[:i + 1]
+                search_bar = self.app.query_one(f"#{Id.SEARCH_INPUT}", Input)
+                self.assertEqual(search_bar.value, so_far)
+            result_list = self.app.query_one(f"#{Id.RESULTS_LIST}", ListView)
+            print(result_list)
+            # There should be 2 items.
+            self.assertEqual(len(result_list.children), 2)
+            preview = self.app.query_one(f"#{Id.PREVIEW}", Static)
+            preview_text = preview.renderable
+            self.assertIsInstance(preview_text, Syntax)
+            code = preview_text.code
+            self.assertEqual(code, "Hello, world!")
+            self.assertEqual(preview_text.lexer.name, "Markdown")
+            focused = self.app.focused
+            self.assertEqual(focused.id, Id.SEARCH_INPUT.value)
+            await pilot.press("enter")
+            focused = self.app.focused
+            self.assertEqual(focused.id, Id.RESULTS_LIST.value)
+            await pilot.press("tab")
+            focused = self.app.focused
+            self.assertEqual(focused.id, Id.PREVIEW_CONTAINER.value)
+            await pilot.press("escape")
+            focused = self.app.focused
+            self.assertEqual(focused.id, Id.SEARCH_INPUT.value)
+
+
 
     def tearDown(self):
         super().tearDown()
