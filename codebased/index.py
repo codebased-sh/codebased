@@ -9,7 +9,7 @@ import sys
 import threading
 import typing as T
 from collections import namedtuple
-from functools import cached_property
+from functools import cached_property, wraps
 from pathlib import Path
 from typing import Generic, TypeVar, Dict
 
@@ -199,6 +199,39 @@ class ThreadSafeCache(Generic[K, V]):
             return self._cache.get(key, default)
 
 
+class thread_local_cached_property:
+    def __init__(self, func):
+        self.func = func
+        self.local = threading.local()
+
+    def __get__(self, obj, cls=None):
+        if obj is None:
+            return self
+
+        if not hasattr(self.local, 'instance'):
+            self.local.instance = self.func(obj)
+        return self.local.instance
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def clear_cache(self, obj):
+        if hasattr(self.local, 'instance'):
+            delattr(self.local, 'instance')
+
+
+def clear_thread_local_cache(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        result = func(self, *args, **kwargs)
+        for name, attr in type(self).__dict__.items():
+            if isinstance(attr, thread_local_cached_property):
+                attr.clear_cache(self)
+        return result
+
+    return wrapper
+
+
 @dataclasses.dataclass
 class Dependencies:
     # config must be passed in explicitly.
@@ -222,7 +255,7 @@ class Dependencies:
             index = faiss.read_index(str(self.config.index_path))
         return index
 
-    @cached_property
+    @thread_local_cached_property
     def db(self) -> sqlite3.Connection:
         db = get_db(self.config.codebased_directory / 'codebased.db')
         migrations = DatabaseMigrations(db, Path(__file__).parent / 'migrations')
