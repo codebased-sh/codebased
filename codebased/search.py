@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import time
 from pathlib import Path
 
 import math
@@ -69,19 +70,28 @@ class CombinedSearchResult:
         return self._sort_key == other._sort_key
 
 
-def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSearchResult]:
+def semantic_search(dependencies: Dependencies, flags: Flags) -> tuple[list[SemanticSearchResult], dict[str, float]]:
+    times = {}
     semantic_results: list[SemanticSearchResult] = []
+    start = time.perf_counter()
     emb = create_ephemeral_embedding(
         dependencies.openai_client,
         flags.query,
         dependencies.settings.embeddings
     )
+    end = time.perf_counter()
+    times['embedding'] = end - start
+    start = time.perf_counter()
     distances, object_ids = dependencies.index.search(
         np.array([emb]),
         k=flags.top_k
     )
+    end = time.perf_counter()
+    times['vss'] = end - start
     distances, object_ids = distances[0], object_ids[0]
+    times['sqlite'] = 0
     for object_id, distance in zip(object_ids, distances):
+        start = time.perf_counter()
         object_row: sqlite3.Row | None = dependencies.db.execute(
             """
                       select
@@ -102,10 +112,12 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> list[SemanticSe
         ).fetchone()
         if object_row is None:
             continue
+        end = time.perf_counter()
+        times['sqlite'] += end - start
         obj = deserialize_object_row(object_row)
         result = SemanticSearchResult(obj, float(distance), object_row['file_sha256_digest'])
         semantic_results.append(result)
-    return semantic_results
+    return semantic_results, times
 
 
 _quote_fts_re = re.compile(r'\s+|(".*?")')
@@ -122,9 +134,11 @@ def quote_fts_query(query: str) -> str:
     return query
 
 
-def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextSearchResult]:
+def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[FullTextSearchResult], dict[str, float]]:
     fts_results = []
     query = quote_fts_query(flags.query)
+    times = {}
+    start = time.perf_counter()
     object_rows = dependencies.db.execute(
         """
                     with ranked_results as (
@@ -159,10 +173,11 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> list[FullTextS
             'top_k': flags.top_k
         }
     ).fetchall()
+    times['fts'] = time.perf_counter() - start
     for object_row in object_rows:
         obj = deserialize_object_row(object_row)
         fts_results.append(FullTextSearchResult(obj, object_row['rank'], object_row['file_sha256_digest']))
-    return fts_results
+    return fts_results, times
 
 
 def merge_results(
@@ -205,17 +220,26 @@ def merge_results(
     return sorted(results)
 
 
-def search_once(dependencies: Dependencies, flags: Flags) -> list[CombinedSearchResult]:
+@dataclasses.dataclass
+class SearchResults:
+    results: list[CombinedSearchResult]
+    times: dict[str, float]
+
+
+def search_once(dependencies: Dependencies, flags: Flags) -> tuple[list[CombinedSearchResult], dict[str, float]]:
     try:
-        return dependencies.search_cache[flags.query]
+        return dependencies.search_cache[flags.query], {}
     except KeyError:
         pass
-    semantic_results = semantic_search(dependencies, flags) if flags.semantic else []
-    full_text_results = full_text_search(dependencies, flags) if flags.full_text_search else []
+    semantic_results, semantic_times = semantic_search(dependencies, flags) if flags.semantic else ([], {})
+    full_text_results, full_text_times = full_text_search(dependencies, flags) if flags.full_text_search else ([], {})
     results = merge_results(semantic_results, full_text_results)
     results = results[:flags.top_k]
     dependencies.search_cache[flags.query] = results
-    return results
+    total_times = semantic_times
+    for key, value in full_text_times.items():
+        total_times[key] = total_times.get(key, 0) + value
+    return results, total_times
 
 
 def deserialize_object_row(object_row: sqlite3.Row) -> Object:
@@ -241,44 +265,48 @@ class RenderedResult(CombinedSearchResult):
 def render_result(
         config: Config,
         result: CombinedSearchResult
-) -> RenderedResult | None:
+) -> tuple[RenderedResult | None, dict[str, float]]:
     abs_path = config.root / result.obj.path
+    times = {'disk': 0, 'render': 0}
     try:
         # TODO: Memoize, at least within a search result set.
+        start = time.perf_counter()
         underlying_file_bytes = abs_path.read_bytes()
+        times['disk'] += time.perf_counter() - start
         actual_sha256 = hashlib.sha256(underlying_file_bytes).digest()
         if result.content_sha256 != actual_sha256:
-            return None
+            return None, times
+        start = time.perf_counter()
         lines = underlying_file_bytes.split(b'\n')
         rendered = render_object(result.obj, in_lines=lines)
-        return RenderedResult(
-            obj=result.obj,
-            l2=result.l2,
-            bm25=result.bm25,
-            content_sha256=result.content_sha256,
-            content=rendered,
+        times['render'] += time.perf_counter() - start
+        rendered_result = RenderedResult(
+            obj=result.obj, l2=result.l2, bm25=result.bm25, content_sha256=result.content_sha256, content=rendered,
             file_bytes=underlying_file_bytes
         )
+        return rendered_result, times
     except FileNotFoundError:
-        return None
+        return None, times
 
 
 def render_results(
         config: Config,
         results: list[CombinedSearchResult]
-) -> list[RenderedResult]:
-    return [
-        rendered
-        for result in results
-        if (rendered := render_result(config, result))
-    ]
+) -> tuple[list[RenderedResult], dict[str, float]]:
+    rendered_results, times = [], {}
+    for result in results:
+        rendered_result, result_times = render_result(config, result)
+        rendered_results.append(rendered_result)
+        for key, value in result_times.items():
+            times[key] = times.get(key, 0) + value
+    return rendered_results, times
 
 
 def print_results(
         config: Config,
         results: list[CombinedSearchResult]
 ):
-    rendered_results = render_results(config, results)
+    rendered_results, times = render_results(config, results)
     for result in rendered_results:
         print(result.content)
         print()

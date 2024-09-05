@@ -118,15 +118,19 @@ class Codebased(App):
     @work(thread=True)
     def search_background(self, query: str, start_time: float):
         self.flags = dataclasses.replace(self.flags, query=query)
-        results = search_once(self.dependencies, self.flags)
-        rendered_results = render_results(self.config, results)
-        self.post_message(self.SearchCompleted(rendered_results, start_time, time.monotonic()))
+        results, times = search_once(self.dependencies, self.flags)
+        rendered_results, render_times = render_results(self.config, results)
+        total_times = times
+        for key, value in render_times.items():
+            total_times[key] = total_times.get(key, 0) + value
+        self.post_message(self.SearchCompleted(rendered_results, start_time, time.monotonic(), total_times))
 
     class SearchCompleted(Message):
-        def __init__(self, results: list[RenderedResult], start: float, finish: float):
+        def __init__(self, results: list[RenderedResult], start: float, finish: float, times: dict[str, float]):
             self.results = results
             self.start = start
             self.finish = finish
+            self.times = times
             super().__init__()
 
         @property
@@ -172,9 +176,14 @@ class Codebased(App):
             self.query_one(Id.RESULTS_LIST.selector, ListView).focus()
 
     async def on_codebased_search_completed(self, message: SearchCompleted):
+        def print_latency(total: float, times: dict[str, float]) -> str:
+            filtered = {k: v for k, v in times.items() if v >= 0.001}
+            breakdown = " + ".join(f"{k}: {v:.3f}s" for k, v in filtered.items())
+            return f"Completed in {total:.3f}s ({breakdown})"
+
         if not self.rendered_results.set(message.start, message.results):
             return
-        self.query_one(Id.LATENCY.selector, Static).update(f"Completed in {message.latency:.3f}s")
+        self.query_one(Id.LATENCY.selector, Static).update(print_latency(message.latency, message.times))
         results_list = await self.clear_results()
         for result in self.rendered_results.value:
             obj = result.obj
