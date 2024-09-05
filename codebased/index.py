@@ -50,7 +50,7 @@ def exit_with_error(message: str, *, exit_code: int = 1) -> T.NoReturn:
 
 
 def get_db(database_file: Path) -> sqlite3.Connection:
-    db = sqlite3.connect(database_file, check_same_thread=False)
+    db = sqlite3.connect(database_file)
     db.row_factory = sqlite3.Row
     return db
 
