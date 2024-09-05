@@ -62,6 +62,8 @@ class Codebased(App):
         ("escape", "focus_search", "Focus search"),
         ("tab", "focus_preview", "Focus preview"),
         ("down", "focus_results", "Focus results"),
+        ("f", "full_text_search", "Toggle full text search"),
+        ("s", "semantic_search", "Toggle semantic search"),
     ]
 
     show_results = var(False)
@@ -114,6 +116,12 @@ class Codebased(App):
             self.search_background(event.value, time.monotonic())
         else:
             await self.clear_results()
+
+    def action_full_text_search(self):
+        self.flags = dataclasses.replace(self.flags, full_text_search=not self.flags.full_text_search)
+
+    def action_semantic_search(self):
+        self.flags = dataclasses.replace(self.flags, semantic=not self.flags.semantic)
 
     @work(thread=True)
     def search_background(self, query: str, start_time: float):
