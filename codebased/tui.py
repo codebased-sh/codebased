@@ -1,6 +1,11 @@
+from __future__ import annotations
+
 import contextlib
 import dataclasses
+import threading
+import time
 from enum import Enum
+from typing import TypeVar, Generic
 
 from rich.syntax import Syntax
 from textual import work, events
@@ -16,6 +21,7 @@ from codebased.search import search_once, render_results, RenderedResult
 
 
 class Id(str, Enum):
+    LATENCY = "latency"
     PREVIEW_CONTAINER = "preview-container"
     SEARCH_INPUT = "search-input"
     RESULTS_LIST = "results-list"
@@ -25,6 +31,29 @@ class Id(str, Enum):
     @property
     def selector(self) -> str:
         return "#" + self.value
+
+
+V = TypeVar('V')
+
+
+@dataclasses.dataclass
+class HWM(Generic[V]):
+    key: float = float('-inf')
+    _value: V | None = None
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+
+    @property
+    def value(self) -> V:
+        with self._lock:
+            return self._value
+
+    def set(self, key: float, value: V) -> bool:
+        with self._lock:
+            if key > self.key:
+                self.key = key
+                self._value = value
+                return True
+            return False
 
 
 class Codebased(App):
@@ -63,11 +92,13 @@ class Codebased(App):
         self.flags = flags
         self.config = config
         self.dependencies = dependencies
-        self.rendered_results = []
+        self.rendered_results: HWM[list[RenderedResult]] = HWM()
+        self.rendered_results.set(0, [])
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Input(placeholder="Enter your search query", id=Id.SEARCH_INPUT.value)
+        yield Static(id=Id.LATENCY.value, shrink=True)
         with Horizontal(id=Id.RESULTS_CONTAINER.value):
             yield ListView(id=Id.RESULTS_LIST.value, initial_index=0)
             with VerticalScroll(id=Id.PREVIEW_CONTAINER.value):
@@ -80,21 +111,27 @@ class Codebased(App):
     async def on_input_changed(self, event: Input.Changed):
         query = event.value
         if len(query) >= 3:
-            self.search_background(event.value)
+            self.search_background(event.value, time.monotonic())
         else:
             await self.clear_results()
 
-    @work(exclusive=True, thread=True)
-    def search_background(self, query: str):
+    @work(thread=True)
+    def search_background(self, query: str, start_time: float):
         self.flags = dataclasses.replace(self.flags, query=query)
         results = search_once(self.dependencies, self.flags)
         rendered_results = render_results(self.config, results)
-        self.post_message(self.SearchCompleted(rendered_results))
+        self.post_message(self.SearchCompleted(rendered_results, start_time, time.monotonic()))
 
     class SearchCompleted(Message):
-        def __init__(self, results):
+        def __init__(self, results: list[RenderedResult], start: float, finish: float):
             self.results = results
+            self.start = start
+            self.finish = finish
             super().__init__()
+
+        @property
+        def latency(self) -> float:
+            return self.finish - self.start
 
     def on_key(self, event: events.Key):
         if event.key == "enter":
@@ -108,8 +145,11 @@ class Codebased(App):
     def select_result(self):
         focused = self.focused
         if isinstance(focused, ListView) and focused.id == Id.RESULTS_LIST.value:
-            result = self.rendered_results[focused.index]
-            self.open_result_in_editor(result)
+            try:
+                result = self.rendered_results.value[focused.index]
+                self.open_result_in_editor(result)
+            except IndexError:
+                return
         elif focused and focused.id == Id.SEARCH_INPUT.value:
             self.query_one(Id.RESULTS_LIST.selector, ListView).focus()
 
@@ -132,17 +172,21 @@ class Codebased(App):
             self.query_one(Id.RESULTS_LIST.selector, ListView).focus()
 
     async def on_codebased_search_completed(self, message: SearchCompleted):
-        self.rendered_results = message.results
-
+        if not self.rendered_results.set(message.start, message.results):
+            return
+        self.query_one(Id.LATENCY.selector, Static).update(f"Completed in {message.latency:.3f}s")
         results_list = await self.clear_results()
-        for result in self.rendered_results:
+        for result in self.rendered_results.value:
             obj = result.obj
             item_text = f"{str(obj.path)}" if obj.kind == 'file' else f"{str(obj.path)} {obj.name}"
             await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
-        if self.rendered_results:
-            self.update_preview(self.rendered_results[0])
+        if self.rendered_results.value:
+            try:
+                self.update_preview(self.rendered_results.value[0])
+            except IndexError:
+                return
 
     async def clear_results(self):
         results_list = self.query_one(Id.RESULTS_LIST.selector, ListView)
@@ -151,7 +195,7 @@ class Codebased(App):
 
     def on_list_view_selected(self, event: ListView.Selected):
         result_id = int(event.item.id.split("-")[1])
-        result = next(r for r in self.rendered_results if r.obj.id == result_id)
+        result = next(r for r in self.rendered_results.value if r.obj.id == result_id)
         self.update_preview(result)
 
     def update_preview(self, result):
