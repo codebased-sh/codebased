@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import os
 import re
@@ -17,7 +16,6 @@ import faiss
 from rich.syntax import Syntax
 from textual.widgets import Input, ListView, Static
 
-from codebased.filesystem import get_filesystem_events_queue
 from codebased.index import find_root_git_repository, Flags, Config, Dependencies, index_paths
 from codebased.main import VERSION
 from codebased.settings import Settings
