@@ -187,7 +187,7 @@ class Codebased(App):
         def print_latency(total: float, times: dict[str, float]) -> str:
             filtered = {k: v for k, v in times.items() if v >= 0.001}
             breakdown = " + ".join(f"{k}: {v:.3f}s" for k, v in filtered.items())
-            return f"Completed in {total:.3f}s ({breakdown})"
+            return f"Completed in {total:.3f}s" + (f" ({breakdown})" if breakdown else "")
 
         if not self.rendered_results.set(message.start, message.results):
             return
