@@ -77,7 +77,7 @@ SIMPLE_REPO_TREE = (
 )
 
 # node_modules in .gitignore
-IGNORE_FOLDER_TREE = (
+GITIGNORE_FOLDER_TREE = (
     Path('.'),
     (
         (Path('README.md'), b'Hello, world!'),
@@ -106,6 +106,55 @@ IGNORE_FOLDER_TREE = (
     )
 )
 
+HIDDEN_FOLDER_TREE = (
+    (
+        Path('.'),
+        (
+            (Path('.git'), ()),
+            (Path('README.md'), b'Hello, world!'),
+            (
+                Path('a-directory'), (
+                    (Path('code.py'), b'print("Hello, world!")'),
+                )
+            ),
+            (
+                Path('.venv'),
+                (
+                    (
+                        Path('bin'),
+                        (
+                            (Path('activate'), b'this is a script of some sort'),
+                        )
+                    ),
+                    (
+                        Path('lib'),
+                        (
+                            (
+                                Path('python3.10'),
+                                (
+                                    (
+                                        Path('site-packages'),
+                                        (
+                                            (Path('slop'),
+                                             ((
+                                                 Path('site.py'),
+                                                 b'print("Hello, world!")'
+                                             ),),
+
+                                             ),
+
+                                        )
+                                    ),
+                                )
+                            ),
+                        )
+                    ),
+                )
+            )
+        )
+    )
+)
+
 
 @dataclasses.dataclass
 class CliTestCase:
@@ -117,7 +166,9 @@ class CliTestCase:
         create_tree(self.tree, path)
 
 
-IGNORE_FOLDER_TEST_CASE = CliTestCase(tree=IGNORE_FOLDER_TREE, objects=4, files=4)
+IGNORE_FOLDER_TEST_CASE = CliTestCase(tree=GITIGNORE_FOLDER_TREE, objects=4, files=4)
+
+HIDDEN_FOLDER_TEST_CASE = CliTestCase(tree=HIDDEN_FOLDER_TREE, objects=2, files=2)
 
 SIMPLE_REPO_TEST_CASE = CliTestCase(tree=SIMPLE_REPO_TREE, objects=2, files=2)
 
@@ -649,7 +700,7 @@ class TestCli(unittest.TestCase):
     def test_ignore_folder(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()
-            create_tree(IGNORE_FOLDER_TREE, path)
+            create_tree(GITIGNORE_FOLDER_TREE, path)
             exit_code = 0
             stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
             stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
@@ -663,6 +714,25 @@ class TestCli(unittest.TestCase):
                 stdout=stdout,
                 expected_file_count=IGNORE_FOLDER_TEST_CASE.files,
                 expected_object_count=IGNORE_FOLDER_TEST_CASE.objects
+            )
+
+    def test_ignore_hidden_folder(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(HIDDEN_FOLDER_TREE, path)
+            exit_code = 0
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b"\n", re.ASCII)
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
+            search_args = ["search", "Hello world"]
+            check_search_command(
+                args=search_args,
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                expected_file_count=HIDDEN_FOLDER_TEST_CASE.files,
+                expected_object_count=HIDDEN_FOLDER_TEST_CASE.objects
             )
 
 

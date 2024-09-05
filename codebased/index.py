@@ -348,7 +348,7 @@ def index_paths(
                     try:
                         if entry.is_symlink():
                             continue
-                        if entry.is_dir():
+                        if entry.is_dir() and not entry.name.startswith('.'):
                             events.append(Events.Directory(entry_path))
                         elif entry.is_file():
                             events.append(Events.File(entry_path))
