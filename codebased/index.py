@@ -682,3 +682,4 @@ class Flags:
     full_text_search: bool
     top_k: int
     query: str
+    rerank: bool

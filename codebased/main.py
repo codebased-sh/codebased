@@ -103,6 +103,7 @@ def search(
         semantic=semantic,
         full_text_search=full_text,
         top_k=top_k,
+        rerank=False
     )
     config = Config(flags=flags)
     settings = Settings.always()

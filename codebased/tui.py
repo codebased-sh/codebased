@@ -65,6 +65,7 @@ class Codebased(App):
         ("d", "debug_mode", "Toggle debug mode"),
         ("f", "full_text_search", "Toggle full text search"),
         ("s", "semantic_search", "Toggle semantic search"),
+        ("r", "rerank", "Toggle reranking"),
     ]
 
     show_results = var(False)
@@ -119,6 +120,10 @@ class Codebased(App):
             self.search_background(self.flags, time.monotonic())
         else:
             await self.clear_results()
+
+    def action_rerank(self):
+        self.flags = dataclasses.replace(self.flags, rerank=not self.flags.rerank)
+        self.search_background(self.flags, time.monotonic())
 
     def action_full_text_search(self):
         self.flags = dataclasses.replace(self.flags, full_text_search=not self.flags.full_text_search)

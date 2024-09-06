@@ -743,6 +743,7 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
         path = Path(self.tempdir.name).resolve()
         SIMPLE_REPO_TEST_CASE.create(path)
         self.flags = Flags(
+            rerank=False,
             directory=path,
             rebuild_faiss_index=False,
             cached_only=False,

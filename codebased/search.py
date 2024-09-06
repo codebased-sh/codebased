@@ -6,10 +6,14 @@ import json
 import re
 import sqlite3
 import time
+import typing as T
 from pathlib import Path
 
 import math
 import numpy as np
+
+if T.TYPE_CHECKING:
+    from openai import OpenAI
 
 from codebased.embeddings import create_ephemeral_embedding
 from codebased.index import Dependencies, Flags, Config
@@ -134,6 +138,51 @@ def quote_fts_query(query: str) -> str:
     return query
 
 
+def rerank_results(query: str, results: list[CombinedSearchResult], oai_client: "OpenAI") -> list[CombinedSearchResult]:
+    json_results = [
+        {
+            "id": r.obj.id,
+            "path": str(r.obj.path),
+            "name": r.obj.name,
+            "kind": r.obj.kind,
+            "line_length": r.obj.line_length,
+            "byte_length": r.obj.byte_range[1] - r.obj.byte_range[0],
+        }
+        for r in results
+    ]
+    json_results = json.dumps(json_results)
+    system_prompt = """
+    You're acting as the reranking component in a search engine for code.
+    The following is a list of results from a search query.
+    Please respond with a JSON list of result IDs, in order of relevance, excluding irrelevant or low quality results.
+    Longer is typically better. Implementations are typically better than tests/mocks/documentation, unless the query
+    asked for these specifically.
+    These tend to be longer! You can also infer based on the file path.
+    Including any non-JSON content will cause the application to crash and / or increase latency, which is bad.
+    """
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": f"Query: {query}\nResults: {json_results}"}
+    ]
+    response = oai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        # temperature=0.0,
+    )
+    content = response.choices[0].message.content
+    print(content)
+    cleaned_content = content[content.find('['):content.rfind(']') + 1]
+    parsed_reranking_results = json.loads(cleaned_content)
+    results_by_id = {r.obj.id: r for r in results}
+    out = []
+    for result_id in parsed_reranking_results:
+        try:
+            out.append(results_by_id.pop(result_id))
+        except KeyError:
+            continue
+    return out
+
+
 def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[FullTextSearchResult], dict[str, float]]:
     fts_results = []
     query = quote_fts_query(flags.query)
@@ -144,7 +193,11 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Ful
                     with ranked_results as (
                         select rowid, rank
                         from fts(:query)
-                        order by rank
+                        -- path, name, content
+                        -- This is a hack.
+                        -- This means a hit in the "path" column is as important as a hit in the "content" column
+                        --  and a hit in the name column is 10,000x more important than a hit in the content column.
+                        order by bm25(fts, 1.0, 10000.0)
                         limit :top_k
                     ),
                     ranked_objects as (
@@ -234,9 +287,13 @@ def search_once(dependencies: Dependencies, flags: Flags) -> tuple[list[Combined
     semantic_results, semantic_times = semantic_search(dependencies, flags) if flags.semantic else ([], {})
     full_text_results, full_text_times = full_text_search(dependencies, flags) if flags.full_text_search else ([], {})
     results = merge_results(semantic_results, full_text_results)
+    total_times = semantic_times
+    if flags.rerank:
+        rerank_start = time.perf_counter()
+        results = rerank_results(flags.query, results, dependencies.openai_client)
+        total_times['reranking'] = time.perf_counter() - rerank_start
     results = results[:flags.top_k]
     dependencies.search_cache[flags] = results
-    total_times = semantic_times
     for key, value in full_text_times.items():
         total_times[key] = total_times.get(key, 0) + value
     return results, total_times
