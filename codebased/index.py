@@ -237,7 +237,7 @@ class Dependencies:
     # config must be passed in explicitly.
     config: Config
     settings: Settings
-    search_cache: ThreadSafeCache[str, list] = dataclasses.field(default_factory=ThreadSafeCache)
+    search_cache: ThreadSafeCache[Flags, list] = dataclasses.field(default_factory=ThreadSafeCache)
 
     @cached_property
     def openai_client(self) -> "OpenAI":
@@ -541,7 +541,9 @@ def index_paths(
                 lines = file_bytes.split(b'\n')
                 requests_to_schedule = []
                 for obj_id, obj in objects_by_id.items():
-                    rendered = render_object(obj, in_lines=lines)
+                    rendered = render_object(obj, in_lines=lines, file=False)
+                    if not rendered:
+                        continue
                     request = EmbeddingRequest(
                         object_id=obj_id,
                         content=rendered,
@@ -668,7 +670,7 @@ def index_paths(
         raise
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class Flags:
     directory: Path
     background: bool

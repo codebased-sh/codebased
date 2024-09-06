@@ -228,14 +228,14 @@ class SearchResults:
 
 def search_once(dependencies: Dependencies, flags: Flags) -> tuple[list[CombinedSearchResult], dict[str, float]]:
     try:
-        return dependencies.search_cache[flags.query], {}
+        return dependencies.search_cache[flags], {}
     except KeyError:
         pass
     semantic_results, semantic_times = semantic_search(dependencies, flags) if flags.semantic else ([], {})
     full_text_results, full_text_times = full_text_search(dependencies, flags) if flags.full_text_search else ([], {})
     results = merge_results(semantic_results, full_text_results)
     results = results[:flags.top_k]
-    dependencies.search_cache[flags.query] = results
+    dependencies.search_cache[flags] = results
     total_times = semantic_times
     for key, value in full_text_times.items():
         total_times[key] = total_times.get(key, 0) + value
