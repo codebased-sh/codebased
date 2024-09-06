@@ -62,6 +62,7 @@ class Codebased(App):
         ("escape", "focus_search", "Focus search"),
         ("tab", "focus_preview", "Focus preview"),
         ("down", "focus_results", "Focus results"),
+        ("d", "debug_mode", "Toggle debug mode"),
         ("f", "full_text_search", "Toggle full text search"),
         ("s", "semantic_search", "Toggle semantic search"),
     ]
@@ -91,6 +92,7 @@ class Codebased(App):
             dependencies: Dependencies,
     ):
         super().__init__()
+        self.debug_mode = False
         self.flags = flags
         self.config = config
         self.dependencies = dependencies
@@ -112,21 +114,23 @@ class Codebased(App):
 
     async def on_input_changed(self, event: Input.Changed):
         query = event.value
+        self.flags = dataclasses.replace(self.flags, query=query)
         if len(query) >= 3:
-            self.search_background(event.value, time.monotonic())
+            self.search_background(self.flags, time.monotonic())
         else:
             await self.clear_results()
 
     def action_full_text_search(self):
         self.flags = dataclasses.replace(self.flags, full_text_search=not self.flags.full_text_search)
+        self.search_background(self.flags, time.monotonic())
 
     def action_semantic_search(self):
         self.flags = dataclasses.replace(self.flags, semantic=not self.flags.semantic)
+        self.search_background(self.flags, time.monotonic())
 
     @work(thread=True)
-    def search_background(self, query: str, start_time: float):
-        self.flags = dataclasses.replace(self.flags, query=query)
-        results, times = search_once(self.dependencies, self.flags)
+    def search_background(self, flags: Flags, start_time: float):
+        results, times = search_once(self.dependencies, flags)
         rendered_results, render_times = render_results(self.config, results)
         total_times = times
         for key, value in render_times.items():
@@ -144,6 +148,9 @@ class Codebased(App):
         @property
         def latency(self) -> float:
             return self.finish - self.start
+
+    class RenderResults(Message):
+        pass
 
     def on_key(self, event: events.Key):
         if event.key == "enter":
@@ -183,6 +190,10 @@ class Codebased(App):
         if self.focused and self.focused.id == Id.SEARCH_INPUT.value:
             self.query_one(Id.RESULTS_LIST.selector, ListView).focus()
 
+    def action_debug_mode(self):
+        self.debug_mode = not self.debug_mode
+        self.post_message(self.RenderResults())
+
     async def on_codebased_search_completed(self, message: SearchCompleted):
         def print_latency(total: float, times: dict[str, float]) -> str:
             filtered = {k: v for k, v in times.items() if v >= 0.001}
@@ -192,10 +203,24 @@ class Codebased(App):
         if not self.rendered_results.set(message.start, message.results):
             return
         self.query_one(Id.LATENCY.selector, Static).update(print_latency(message.latency, message.times))
+        self.post_message(self.RenderResults())
+
+    async def on_codebased_render_results(self, event: RenderResults):
         results_list = await self.clear_results()
         for result in self.rendered_results.value:
             obj = result.obj
-            item_text = f"{str(obj.path)}" if obj.kind == 'file' else f"{str(obj.path)} {obj.name}"
+            lines = [str(obj.path)]
+            if obj.kind != 'file':
+                lines.append(f"[{obj.kind}] {obj.name}")
+            if self.debug_mode:
+                hit_categories = []
+                if result.l2 is not None:
+                    hit_categories.append(f"Semantic ({result.l2:.2f})")
+                if result.bm25 is not None:
+                    hit_categories.append(f"Full text ({result.bm25:.1f})")
+                reasoning = ' + '.join(hit_categories)
+                lines.append(reasoning)
+            item_text = '\n'.join(lines)
             await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
