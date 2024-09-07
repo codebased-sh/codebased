@@ -95,7 +95,7 @@ def search(
         ),
 ):
     sqlite_version = tuple(map(int, sqlite3.sqlite_version.split('.')))
-    if sqlite_version < (3, 9, 0):
+    if sqlite_version < (3, 34, 0):
         typer.echo(f"Codebased requires SQLite 3.9.0 or higher, found {sqlite3.sqlite_version}.", err=True)
         raise typer.Exit(1)
     flags = Flags(
