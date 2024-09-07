@@ -24,7 +24,10 @@ def background_worker(
 
     while not shutdown_event.is_set():
         # Wait indefinitely for an event.
-        events: list[Path] = [event_queue.get()]
+        try:
+            events: list[Path] = [event_queue.get(timeout=1.0)]
+        except (queue.Empty, TimeoutError):
+            continue
         start = time.monotonic()
         loop_timeout = .1
         while time.monotonic() - start < loop_timeout:
