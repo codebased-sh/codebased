@@ -44,8 +44,8 @@ def l2_is_close(l2: float) -> bool:
 @dataclasses.dataclass
 class CombinedSearchResult:
     obj: Object
-    l2: float | None
-    bm25: float | None
+    l2: T.Union[float, None]
+    bm25: T.Union[float, None]
     content_sha256: bytes
 
 
@@ -143,7 +143,6 @@ def rerank_results(query: str, results: list[CombinedSearchResult], oai_client: 
         # temperature=0.0,
     )
     content = response.choices[0].message.content
-    print(content)
     cleaned_content = content[content.find('['):content.rfind(']') + 1]
     parsed_reranking_results = json.loads(cleaned_content)
     results_by_id = {r.obj.id: r for r in results}
@@ -364,7 +363,11 @@ def render_result(
         rendered = render_object(result.obj, in_lines=lines)
         times['render'] += time.perf_counter() - start
         rendered_result = RenderedResult(
-            obj=result.obj, l2=result.l2, bm25=result.bm25, content_sha256=result.content_sha256, content=rendered,
+            obj=result.obj,
+            l2=result.l2,
+            bm25=result.bm25,
+            content_sha256=result.content_sha256,
+            content=rendered,
             file_bytes=underlying_file_bytes
         )
         return rendered_result, times

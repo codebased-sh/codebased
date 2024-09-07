@@ -17,7 +17,7 @@ class Object:
     # text: bytes  # This field is an excellent candidate for removal / using a memoryview.
     byte_range: T.Tuple[int, int]  # [start, end)
     coordinates: Coordinates
-    id: int | None = None
+    id: T.Union[int, None] = None
 
     def __len__(self):
         start, end = self.byte_range
