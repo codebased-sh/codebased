@@ -162,34 +162,41 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Ful
     start = time.perf_counter()
     object_rows = dependencies.db.execute(
         """
-                    with ranked_results as (
-                        select rowid, rank
-                        from fts(:query)
-                        -- path, name, content
-                        -- This is a hack.
-                        -- This means a hit in the "path" column is as important as a hit in the "content" column
-                        --  and a hit in the name column is 10,000x more important than a hit in the content column.
-                        order by bm25(fts, 1.0, 10000.0)
-                        limit :top_k
+                    with all_matches as (
+                               select rowid, -length(content) as rank
+                               from fts
+                               where name match :query
+                               union all
+                               select rowid, rank
+                               from fts(:query)
+                    ),
+                    min_rank_by_rowid as (
+                               select rowid, min(rank) as rank
+                               from all_matches
+                               group by rowid
+                    ),
+                    sorted_limited_results as (
+                               select rowid, rank
+                               from min_rank_by_rowid
+                               order by rank
+                               limit :top_k
                     ),
                     ranked_objects as (
-                        select
-                            o.id,
-                            o.path,
-                            o.name,
-                            o.language,
-                            o.context_before,
-                            o.context_after,
-                            o.kind,
-                            o.byte_range,
-                            o.coordinates,
-                            r.rank
-                        from object o
-                        inner join ranked_results r on o.id = r.rowid
+                               select o.id,
+                                      o.path,
+                                      o.name,
+                                      o.language,
+                                      o.context_before,
+                                      o.context_after,
+                                      o.kind,
+                                      o.byte_range,
+                                      o.coordinates,
+                                      s.rank
+                               from object o
+                               inner join sorted_limited_results s on o.id = s.rowid
                     )
-                    select 
-                        *,
-                        (select sha256_digest from file where path = o.path) as file_sha256_digest
+                    select *,
+                           (select sha256_digest from file where path = o.path) as file_sha256_digest
                     from ranked_objects o
                     order by o.rank;
                 """,
