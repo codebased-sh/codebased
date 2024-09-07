@@ -47,32 +47,6 @@ class CombinedSearchResult:
     bm25: float | None
     content_sha256: bytes
 
-    @property
-    def _sort_key(self) -> tuple[float, float]:
-        # Exact + semantic matches first.
-        if self.l2 is not None and self.bm25 is not None:
-            return 0, self.l2
-        # Close semantic matches next.
-        if self.l2 is not None and self.l2 < math.sqrt(2) * .9:
-            return 1, self.l2
-        # All exact matches next.
-        if self.bm25 is not None:
-            return 2, self.bm25
-        # All semantic matches next.
-        if self.l2 is not None:
-            return 3, self.l2
-        # This should never happen.
-        return float('inf'), 0
-
-    def __lt__(self, other: CombinedSearchResult):
-        return self._sort_key < other._sort_key
-
-    def __gt__(self, other: CombinedSearchResult):
-        return self._sort_key > other._sort_key
-
-    def __eq__(self, other: CombinedSearchResult):
-        return self._sort_key == other._sort_key
-
 
 def semantic_search(dependencies: Dependencies, flags: Flags) -> tuple[list[SemanticSearchResult], dict[str, float]]:
     times = {}
@@ -238,12 +212,15 @@ def merge_results(
         full_text_results: list[FullTextSearchResult]
 ) -> list[CombinedSearchResult]:
     results: list[CombinedSearchResult] = []
-    semantic_ids = {result.obj.id: result for result in semantic_results}
-    full_text_ids = {result.obj.id: result for result in full_text_results}
-    both = set(semantic_ids.keys()) & set(full_text_ids.keys())
+    semantic_ids = {result.obj.id: i for i, result in enumerate(semantic_results)}
+    full_text_ids = {result.obj.id: i for i, result in enumerate(full_text_results)}
+    both = set(semantic_ids) & set(full_text_ids)
+    sort_key = {}
     for obj_id in both:
-        semantic_result = semantic_ids.pop(obj_id)
-        full_text_result = full_text_ids.pop(obj_id)
+        semantic_index = semantic_ids.pop(obj_id)
+        full_text_index = full_text_ids.pop(obj_id)
+        semantic_result = semantic_results[semantic_index]
+        full_text_result = full_text_results[full_text_index]
         assert semantic_result.content_sha256 == full_text_result.content_sha256
         result = CombinedSearchResult(
             semantic_result.obj,
@@ -251,8 +228,10 @@ def merge_results(
             full_text_result.bm25,
             semantic_result.content_sha256
         )
+        sort_key[obj_id] = (0, min(semantic_index, full_text_index))
         results.append(result)
-    for full_text_result in full_text_ids.values():
+    for obj_id, full_text_index in full_text_ids.items():
+        full_text_result = full_text_results[full_text_index]
         results.append(
             CombinedSearchResult(
                 full_text_result.obj,
@@ -261,7 +240,9 @@ def merge_results(
                 full_text_result.content_sha256
             )
         )
-    for semantic_result in semantic_ids.values():
+        sort_key[obj_id] = (1, full_text_index)
+    for obj_id, semantic_index in semantic_ids.items():
+        semantic_result = semantic_results[semantic_index]
         results.append(
             CombinedSearchResult(
                 semantic_result.obj,
@@ -270,7 +251,8 @@ def merge_results(
                 semantic_result.content_sha256
             )
         )
-    return sorted(results)
+        sort_key[obj_id] = (1, semantic_index)
+    return sorted(results, key=lambda r: sort_key[r.obj.id])
 
 
 @dataclasses.dataclass
@@ -292,7 +274,7 @@ def search_once(dependencies: Dependencies, flags: Flags) -> tuple[list[Combined
         rerank_start = time.perf_counter()
         results = rerank_results(flags.query, results, dependencies.openai_client)
         total_times['reranking'] = time.perf_counter() - rerank_start
-    results = results[:flags.top_k]
+    # results = results[:flags.top_k]
     dependencies.search_cache[flags] = results
     for key, value in full_text_times.items():
         total_times[key] = total_times.get(key, 0) + value
