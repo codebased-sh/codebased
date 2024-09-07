@@ -36,4 +36,4 @@ create table embedding
 create index embedding_content_sha256_index on embedding (content_sha256);
 
 -- rowid is object id
-create virtual table fts using fts5(path, name, content, content='', contentless_delete=1, tokenize="trigram");
+create virtual table fts using fts5(path, name, content, tokenize="trigram");

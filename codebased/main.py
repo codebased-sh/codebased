@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import threading
 from pathlib import Path
 from typing import Optional
@@ -93,6 +94,10 @@ def search(
             help="Run in the background.",
         ),
 ):
+    sqlite_version = tuple(map(int, sqlite3.sqlite_version.split('.')))
+    if sqlite_version < (3, 9, 0):
+        typer.echo(f"Codebased requires SQLite 3.9.0 or higher, found {sqlite3.sqlite_version}.", err=True)
+        raise typer.Exit(1)
     flags = Flags(
         directory=directory,
         rebuild_faiss_index=rebuild_faiss_index,
