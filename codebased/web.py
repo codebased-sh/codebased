@@ -5,14 +5,14 @@ from os import getenv
 from pathlib import Path
 from typing import Union
 
-from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from codebased.index import Flags, Dependencies, Config
-from codebased.search import RenderedResult, search_once, render_result
-from codebased.settings import Settings
 from codebased.index import index_paths
+from codebased.search import search_once, render_result
+from codebased.settings import Settings
 
 
 class SearchRequest(BaseModel):
