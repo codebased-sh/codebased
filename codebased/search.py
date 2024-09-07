@@ -346,7 +346,8 @@ class RenderedResult(CombinedSearchResult):
 
 def render_result(
         config: Config,
-        result: CombinedSearchResult
+        result: CombinedSearchResult,
+        **kwargs
 ) -> tuple[RenderedResult | None, dict[str, float]]:
     abs_path = config.root / result.obj.path
     times = {'disk': 0, 'render': 0}
@@ -360,7 +361,7 @@ def render_result(
             return None, times
         start = time.perf_counter()
         lines = underlying_file_bytes.split(b'\n')
-        rendered = render_object(result.obj, in_lines=lines)
+        rendered = render_object(result.obj, lines, **kwargs)
         times['render'] += time.perf_counter() - start
         rendered_result = RenderedResult(
             obj=result.obj,
@@ -377,11 +378,12 @@ def render_result(
 
 def render_results(
         config: Config,
-        results: list[CombinedSearchResult]
+        results: list[CombinedSearchResult],
+        **kwargs
 ) -> tuple[list[RenderedResult], dict[str, float]]:
     rendered_results, times = [], {}
     for result in results:
-        rendered_result, result_times = render_result(config, result)
+        rendered_result, result_times = render_result(config, result, **kwargs)
         rendered_results.append(rendered_result)
         for key, value in result_times.items():
             times[key] = times.get(key, 0) + value
