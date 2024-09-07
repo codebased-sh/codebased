@@ -59,6 +59,7 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Sema
     )
     end = time.perf_counter()
     times['embedding'] = end - start
+
     start = time.perf_counter()
     distances, object_ids = dependencies.index.search(
         np.array([emb]),
@@ -66,35 +67,32 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Sema
     )
     end = time.perf_counter()
     times['vss'] = end - start
+
     distances, object_ids = distances[0], object_ids[0]
-    times['sqlite'] = 0
-    for object_id, distance in zip(object_ids, distances):
-        start = time.perf_counter()
-        object_row: sqlite3.Row | None = dependencies.db.execute(
-            """
-                      select
-                          id,
-                          path,
-                          name,
-                          language,
-                          context_before,
-                          context_after,
-                          kind,
-                          byte_range,
-                          coordinates,
-                          (select sha256_digest from file where path = o.path) as file_sha256_digest
-                      from object o
-                      where id = :id;
-               """,
-            {'id': int(object_id)}
-        ).fetchone()
-        if object_row is None:
-            continue
-        end = time.perf_counter()
-        times['sqlite'] += end - start
+
+    start = time.perf_counter()
+    placeholders = ','.join('?' for _ in object_ids)
+    query = f"""
+        SELECT o.*,
+               (SELECT sha256_digest FROM file WHERE path = o.path) AS file_sha256_digest
+        FROM object o
+        WHERE o.id IN ({placeholders})
+    """
+    object_rows = dependencies.db.execute(query, [int(object_id) for object_id in object_ids]).fetchall()
+    end = time.perf_counter()
+    times['sqlite'] = end - start
+
+    # Create a mapping of object_id to its index in the search results
+    id_to_index = {int(id): index for index, id in enumerate(object_ids)}
+
+    # Sort the object_rows based on their order in the search results
+    sorted_object_rows = sorted(object_rows, key=lambda row: id_to_index[row['id']])
+
+    for object_row, distance in zip(sorted_object_rows, distances):
         obj = deserialize_object_row(object_row)
         result = SemanticSearchResult(obj, float(distance), object_row['file_sha256_digest'])
         semantic_results.append(result)
+
     return semantic_results, times
 
 

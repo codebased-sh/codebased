@@ -17,7 +17,7 @@ from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
 
 from codebased.editor import open_editor, suspends
 from codebased.index import Flags, Config, Dependencies
-from codebased.search import search_once, render_results, RenderedResult
+from codebased.search import search_once, render_results, RenderedResult, CombinedSearchResult, render_result
 
 
 class Id(str, Enum):
@@ -97,8 +97,8 @@ class Codebased(App):
         self.flags = flags
         self.config = config
         self.dependencies = dependencies
-        self.rendered_results: HWM[list[RenderedResult]] = HWM()
-        self.rendered_results.set(0, [])
+        self.results: HWM[list[CombinedSearchResult]] = HWM()
+        self.results.set(0, [])
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -136,14 +136,16 @@ class Codebased(App):
     @work(thread=True)
     def search_background(self, flags: Flags, start_time: float):
         results, times = search_once(self.dependencies, flags)
-        rendered_results, render_times = render_results(self.config, results)
-        total_times = times
-        for key, value in render_times.items():
-            total_times[key] = total_times.get(key, 0) + value
-        self.post_message(self.SearchCompleted(rendered_results, start_time, time.monotonic(), total_times))
+        self.post_message(self.SearchCompleted(results, start_time, time.monotonic(), times))
 
     class SearchCompleted(Message):
-        def __init__(self, results: list[RenderedResult], start: float, finish: float, times: dict[str, float]):
+        def __init__(
+                self,
+                results: list[CombinedSearchResult],
+                start: float,
+                finish: float,
+                times: dict[str, float]
+        ):
             self.results = results
             self.start = start
             self.finish = finish
@@ -170,7 +172,7 @@ class Codebased(App):
         focused = self.focused
         if isinstance(focused, ListView) and focused.id == Id.RESULTS_LIST.value:
             try:
-                result = self.rendered_results.value[focused.index]
+                result = self.results.value[focused.index]
                 self.open_result_in_editor(result)
             except IndexError:
                 return
@@ -205,14 +207,14 @@ class Codebased(App):
             breakdown = " + ".join(f"{k}: {v:.3f}s" for k, v in filtered.items())
             return f"Completed in {total:.3f}s" + (f" ({breakdown})" if breakdown else "")
 
-        if not self.rendered_results.set(message.start, message.results):
+        if not self.results.set(message.start, message.results):
             return
         self.query_one(Id.LATENCY.selector, Static).update(print_latency(message.latency, message.times))
         self.post_message(self.RenderResults())
 
     async def on_codebased_render_results(self, event: RenderResults):
         results_list = await self.clear_results()
-        for result in self.rendered_results.value:
+        for result in self.results.value:
             obj = result.obj
             lines = [str(obj.path)]
             if obj.kind != 'file':
@@ -229,9 +231,9 @@ class Codebased(App):
             await results_list.append(ListItem(Static(item_text), id=f"result-{obj.id}"))
 
         self.show_results = True
-        if self.rendered_results.value:
+        if self.results.value:
             try:
-                self.update_preview(self.rendered_results.value[0])
+                self.update_preview(self.results.value[0])
             except IndexError:
                 return
 
@@ -242,16 +244,20 @@ class Codebased(App):
 
     def on_list_view_selected(self, event: ListView.Selected):
         result_id = int(event.item.id.split("-")[1])
-        result = next(r for r in self.rendered_results.value if r.obj.id == result_id)
+        result = next(r for r in self.results.value if r.obj.id == result_id)
         self.update_preview(result)
 
-    def update_preview(self, result):
+    def update_preview(self, result: CombinedSearchResult):
         preview = self.query_one(Id.PREVIEW.selector, Static)
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
+        rendered_result, _ = render_result(self.config, result)
+        if rendered_result is None:
+            return
+        file_bytes = rendered_result.file_bytes
         try:
-            code = result.file_bytes.decode('utf-8')
+            code = file_bytes.decode('utf-8')
         except UnicodeDecodeError:
-            code = result.file_bytes.decode('utf-16')
+            code = file_bytes.decode('utf-16')
         lexer = Syntax.guess_lexer(str(result.obj.path), code)
         highlight_lines = set(range(start_line + 1, end_line + 2))
         syntax = Syntax(
