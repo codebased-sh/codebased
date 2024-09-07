@@ -357,6 +357,21 @@ def check_file_did_not_change(path: Path):
 
 
 class TestCli(unittest.TestCase):
+    def test_debug(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            stdout = re.compile(
+                b"Codebased: \d+\.\d+\.\d+.*Python: \d+\.\d+\.\d+.*SQLite: \d+\.\d+\.\d+.*FAISS: \d+\.\d+\.\d+.*OpenAI: \d+\.\d+\.\d+.*",
+                re.ASCII | re.DOTALL
+            )
+            stderr = b""
+            check_codebased_cli(
+                args=["debug"],
+                cwd=Path(tempdir).resolve(),
+                exit_code=0,
+                stderr=stderr,
+                stdout=stdout,
+            )
+
     def test_run_outside_a_git_repository(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = Path(tempdir).resolve()

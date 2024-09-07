@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 import threading
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -39,6 +39,22 @@ def main(
         ),
 ):
     pass
+
+
+@cli.command("debug")
+def debug():
+    import faiss
+    import openai
+    import sqlite3
+    components: dict[str, str] = {
+        "Codebased": VERSION,
+        "Python": sys.version,
+        "SQLite": sqlite3.sqlite_version,
+        "FAISS": faiss.__version__,
+        "OpenAI": openai.__version__,
+    }
+    lines = [f"{key}: {value}" for key, value in components.items()]
+    typer.echo("\n".join(lines))
 
 
 @cli.command("search")
