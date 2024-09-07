@@ -137,9 +137,9 @@ HIDDEN_FOLDER_TREE = (
                                         (
                                             (Path('slop'),
                                              ((
-                                                 Path('site.py'),
-                                                 b'print("Hello, world!")'
-                                             ),),
+                                                  Path('site.py'),
+                                                  b'print("Hello, world!")'
+                                              ),),
 
                                              ),
 
@@ -801,6 +801,10 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
             await pilot.press("escape")
             focused = self.app.focused
             self.assertEqual(focused.id, Id.SEARCH_INPUT.value)
+            await pilot.press("r")
+            await pilot.press("f")
+            await pilot.press("f")
+            await pilot.press("d")
 
     def tearDown(self):
         super().tearDown()
