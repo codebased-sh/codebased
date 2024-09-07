@@ -32,6 +32,7 @@ class SemanticSearchResult:
 @dataclasses.dataclass
 class FullTextSearchResult:
     obj: Object
+    name_match: bool
     bm25: float
     content_sha256: bytes
 
@@ -71,7 +72,7 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Sema
     distances, object_ids = distances[0], object_ids[0]
 
     start = time.perf_counter()
-    placeholders = ','.join('?' for _ in object_ids)
+    placeholders = ','.join(['?'] * len(object_ids))
     query = f"""
         SELECT o.*,
                (SELECT sha256_digest FROM file WHERE path = o.path) AS file_sha256_digest
@@ -162,23 +163,40 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Ful
     start = time.perf_counter()
     object_rows = dependencies.db.execute(
         """
-                    with all_matches as (
-                               select rowid, -length(content) as rank
+                    with name_matches as (
+                               select rowid, true as name_match, rank
                                from fts
                                where name match :query
-                               union all
-                               select rowid, rank
+                               order by rank
+                               limit :top_k
+                    ),
+                    content_matches as (
+                               select rowid, false as name_match,  rank
                                from fts(:query)
+                               order by rank
+                               limit :top_k
+                    ),
+                    all_matches as (
+                               select * from name_matches
+                               union all
+                               select * from content_matches
                     ),
                     min_rank_by_rowid as (
-                               select rowid, min(rank) as rank
+                               select 
+                                rowid, 
+                                max(name_match) as name_match,
+                                min(rank) as rank
                                from all_matches
                                group by rowid
+                               order by name_match desc, rank
                     ),
                     sorted_limited_results as (
-                               select rowid, rank
+                               select 
+                                    rowid,
+                                    name_match,
+                                    rank
                                from min_rank_by_rowid
-                               order by rank
+                               order by name_match desc, rank
                                limit :top_k
                     ),
                     ranked_objects as (
@@ -191,6 +209,7 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Ful
                                       o.kind,
                                       o.byte_range,
                                       o.coordinates,
+                                      s.name_match,
                                       s.rank
                                from object o
                                inner join sorted_limited_results s on o.id = s.rowid
@@ -198,7 +217,7 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Ful
                     select *,
                            (select sha256_digest from file where path = o.path) as file_sha256_digest
                     from ranked_objects o
-                    order by o.rank;
+                    order by o.name_match desc, o.rank;
                 """,
         {
             'query': query,
@@ -208,7 +227,14 @@ def full_text_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Ful
     times['fts'] = time.perf_counter() - start
     for object_row in object_rows:
         obj = deserialize_object_row(object_row)
-        fts_results.append(FullTextSearchResult(obj, object_row['rank'], object_row['file_sha256_digest']))
+        fts_results.append(
+            FullTextSearchResult(
+                obj,
+                object_row['name_match'],
+                object_row['rank'],
+                object_row['file_sha256_digest']
+            )
+        )
     return fts_results, times
 
 
@@ -220,6 +246,7 @@ def merge_results(
     semantic_ids = {result.obj.id: i for i, result in enumerate(semantic_results)}
     full_text_ids = {result.obj.id: i for i, result in enumerate(full_text_results)}
     both = set(semantic_ids) & set(full_text_ids)
+    name_matches = {x.obj.id for x in full_text_results if x.name_match}
     sort_key = {}
     for obj_id in both:
         semantic_index = semantic_ids.pop(obj_id)
@@ -233,7 +260,13 @@ def merge_results(
             full_text_result.bm25,
             semantic_result.content_sha256
         )
-        sort_key[obj_id] = (0, min(semantic_index, full_text_index))
+        sort_key[obj_id] = (
+            0,
+            min(
+                semantic_index,
+                full_text_index
+            )
+        )
         results.append(result)
     for obj_id, full_text_index in full_text_ids.items():
         full_text_result = full_text_results[full_text_index]
@@ -257,6 +290,12 @@ def merge_results(
             )
         )
         sort_key[obj_id] = (1, semantic_index)
+    for i, result in enumerate(full_text_results):
+        obj_id = result.obj.id
+        if obj_id in name_matches:
+            sort_key[obj_id] = (-1, i)
+        else:
+            break
     return sorted(results, key=lambda r: sort_key[r.obj.id])
 
 
