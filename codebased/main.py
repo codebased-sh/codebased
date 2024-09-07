@@ -88,7 +88,7 @@ def search(
             min=1,
         ),
         background: bool = typer.Option(
-            False,
+            True,
             "--background/--no-background",
             help="Run in the background.",
         ),
@@ -114,7 +114,7 @@ def search(
     if flags.background:
         thread = threading.Thread(
             target=background_worker,
-            args=(dependencies, flags, config, shutdown_event, fs_events),
+            args=(dependencies, config, shutdown_event, fs_events),
             daemon=True
         )
     else:
