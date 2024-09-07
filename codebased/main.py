@@ -42,7 +42,7 @@ def main(
 
 @cli.command("search")
 def search(
-        query: Optional[str] = typer.Argument(None, help="The search query"),
+        query: str = typer.Argument("", help="The search query"),
         directory: Path = typer.Option(
             Path.cwd(),
             "-d",
