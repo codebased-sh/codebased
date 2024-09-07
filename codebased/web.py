@@ -8,6 +8,8 @@ from typing import Union
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
 
 from codebased.index import Flags, Dependencies, Config
 from codebased.index import index_paths
@@ -66,11 +68,23 @@ def create_app():
     )
 
     app = FastAPI()
+    app.mount(
+        "/static",
+        StaticFiles(
+            directory=Path(__file__).parent / "static"
+        ),
+        name="static"
+    )
 
     @app.on_event("startup")
     def startup_event():
+
         if not config.flags.cached_only:
             index_paths(dependencies, config, [config.flags.directory], total=True)
+
+    @app.get("/")
+    async def read_index():
+        return FileResponse(Path(__file__).parent / "index.html")
 
     @app.post("/search", response_model=SearchResponse)
     def search(request: SearchRequest) -> SearchResponse:

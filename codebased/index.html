@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codebased Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        #results {
+            margin-top: 20px;
+        }
+
+        .result {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+<h1>CodeBased Search</h1>
+<form id="searchForm">
+    <input type="text" id="query" placeholder="Enter your search query" required>
+    <button type="submit">Search</button>
+</form>
+<div id="results"></div>
+
+<script>
+    document.getElementById('searchForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const query = document.getElementById('query').value;
+
+        fetch('/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                query: query,
+                semantic: true,
+                full_text: true,
+                rerank: true,
+                top_k: 10
+            }),
+        })
+            .then(response => response.json())
+            .then(data => {
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = '';
+
+                data.data.forEach(result => {
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'result';
+                    resultDiv.innerHTML = `
+                        <h3>${result.name}</h3>
+                        <p>Path: ${result.path}</p>
+                        <p>Language: ${result.language}</p>
+                        <p>Line length: ${result.line_length}</p>
+                        <p>Byte length: ${result.byte_length}</p>
+                        <pre><code>${result.content}</code></pre>
+                    `;
+                    resultsDiv.appendChild(resultDiv);
+                });
+
+                const timesDiv = document.createElement('div');
+                timesDiv.innerHTML = '<h3>Search Times:</h3>';
+                for (const [key, value] of Object.entries(data.times)) {
+                    timesDiv.innerHTML += `<p>${key}: ${value.toFixed(3)} seconds</p>`;
+                }
+                resultsDiv.appendChild(timesDiv);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while searching. Please try again.');
+            });
+    });
+</script>
+</body>
+</html>
