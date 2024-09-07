@@ -83,7 +83,7 @@ def create_app():
             index_paths(dependencies, config, [config.flags.directory], total=True)
 
     @app.get("/")
-    async def read_index():
+    async def read_index_html():
         return FileResponse(Path(__file__).parent / "index.html")
 
     @app.post("/search", response_model=SearchResponse)
