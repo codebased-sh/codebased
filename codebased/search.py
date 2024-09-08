@@ -12,6 +12,8 @@ from pathlib import Path
 import math
 import numpy as np
 
+from codebased.utils import decode_text
+
 if T.TYPE_CHECKING:
     from openai import OpenAI
 
@@ -360,7 +362,10 @@ def render_result(
         if result.content_sha256 != actual_sha256:
             return None, times
         start = time.perf_counter()
-        lines = underlying_file_bytes.split(b'\n')
+        decoded_text = decode_text(underlying_file_bytes)
+        if decoded_text is None:
+            return None, times
+        lines = decoded_text.splitlines()
         rendered = render_object(result.obj, lines, **kwargs)
         times['render'] += time.perf_counter() - start
         rendered_result = RenderedResult(

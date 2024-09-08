@@ -18,6 +18,7 @@ import tree_sitter_rust
 import tree_sitter_typescript
 
 from codebased.models import Object, Coordinates
+from codebased.utils import decode_text
 
 
 class LanguageImpl:
@@ -157,7 +158,7 @@ def parse_objects(path: Path, text: bytes) -> list[Object]:
             chunks.append(
                 Object(
                     path=path,
-                    name=name_node.text.decode('utf-8'),
+                    name=decode_text(name_node.text),
                     kind=definition_kind,
                     language=impl.name,
                     context_before=before,
@@ -583,7 +584,7 @@ def get_javascript_impl() -> LanguageImpl:
 
 def render_object(
         obj: Object,
-        in_lines: list[bytes],
+        in_lines: list[str],
         *,
         context: bool = True,
         file: bool = True,
@@ -609,11 +610,17 @@ def render_object(
 
     if context:
         for line in obj.context_before:
-            out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
+            out_lines.append(line_formatter(line, in_lines[line]))
     start_line, end_line = obj.coordinates[0][0], obj.coordinates[1][0]
     for i in range(start_line, end_line + 1):
-        out_lines.append(line_formatter(i, in_lines[i].decode('utf-8')))
+        try:
+            out_lines.append(line_formatter(i, in_lines[i]))
+        except IndexError:
+            # If there's a newline at the end of the file.
+            if i == end_line:
+                break
+            raise
     # if context:
     #     for line in obj.context_after[::-1]:
-    #         out_lines.append(line_formatter(line, in_lines[line].decode('utf-8')))
+    #         out_lines.append(line_formatter(line, in_lines[line]))
     return '\n'.join(out_lines)

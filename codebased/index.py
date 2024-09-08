@@ -11,7 +11,7 @@ import sys
 import threading
 import typing as T
 from collections import namedtuple
-from functools import cached_property, wraps
+from functools import cached_property
 from pathlib import Path
 from typing import Generic, TypeVar, Dict
 
@@ -22,6 +22,7 @@ import tiktoken
 from tqdm import tqdm
 
 from codebased.settings import EmbeddingsConfig
+from codebased.utils import decode_text
 
 if T.TYPE_CHECKING:
     from openai import OpenAI
@@ -62,10 +63,10 @@ class Events:
     StoreEmbeddings = namedtuple('StoreEmbeddings', ['embeddings'])
     Commit = namedtuple('Commit', [])
     FaissInserts = namedtuple('FaissInserts', ['embeddings'])
-    IndexObjects = namedtuple('IndexObjects', ['file_bytes', 'objects'])
+    IndexObjects = namedtuple('IndexObjects', ['file_bytes', 'objects', 'lines'])
     ScheduleEmbeddingRequests = namedtuple('EmbeddingRequests', ['requests'])
     FaissDeletes = namedtuple('FaissDeletes', ['ids'])
-    IndexFile = namedtuple('IndexFile', ['path', 'content'])  # tuple[Path, bytes]
+    IndexFile = namedtuple('IndexFile', ['path', 'content', 'lines'])
     DeleteFile = namedtuple('DeleteFile', ['path'])
     DeleteFileObjects = namedtuple('DeleteFile', ['path'])
     Directory = namedtuple('Directory', ['path'])
@@ -76,27 +77,6 @@ class Events:
 
 def is_binary(file_bytes: bytes) -> bool:
     return b'\x00' in file_bytes
-
-
-def is_utf8(file_bytes: bytes) -> bool:
-    try:
-        file_bytes.decode('utf-8')
-        return True
-    except UnicodeDecodeError:
-        return False
-
-
-def is_utf16(file_bytes: bytes) -> bool:
-    # Check for UTF-16 BOM (Byte Order Mark)
-    if file_bytes.startswith(b'\xff\xfe') or file_bytes.startswith(b'\xfe\xff'):
-        return True
-
-    # If no BOM, check if the file decodes as UTF-16
-    try:
-        file_bytes.decode('utf-16')
-        return True
-    except UnicodeDecodeError:
-        return False
 
 
 # Put this on Dependencies object.
@@ -401,7 +381,8 @@ def index_paths(
                         raise FileExceptions.Ignore()
                     # TODO: See how long this takes on large repos.
                     # TODO: We might want to memoize the "skip" results if this is an issue.
-                    if not (is_utf8(file_bytes) or is_utf16(file_bytes)):
+                    decoded_text = decode_text(file_bytes)
+                    if decoded_text is None:
                         raise FileExceptions.Ignore()
                     real_sha256_digest = hashlib.sha256(file_bytes).digest()
                     # TODO: To support incremental indexing, i.e. allowing this loop to make progress if interrupted
@@ -429,7 +410,7 @@ def index_paths(
                     if previous_sha256_digest == real_sha256_digest:
                         raise FileExceptions.AlreadyIndexed()
                     # Actually schedule the file for indexing.
-                    events.append(Events.IndexFile(relative_path, file_bytes))
+                    events.append(Events.IndexFile(relative_path, file_bytes, decoded_text.splitlines()))
                     # Delete old objects before adding new ones.
                     events.append(Events.DeleteFileObjects(relative_path))
                     continue
@@ -510,7 +491,7 @@ def index_paths(
                     # )
                 deletion_markers.extend(deleted_ids)
             elif isinstance(event, Events.IndexFile):
-                relative_path, file_bytes = event.path, event.content
+                relative_path, file_bytes, lines = event.path, event.content, event.lines
                 assert isinstance(relative_path, Path)
                 assert isinstance(file_bytes, bytes)
 
@@ -538,17 +519,16 @@ def index_paths(
 
                     ).fetchone()
                     objects_by_id[object_id] = obj
-                events.append(Events.IndexObjects(file_bytes, objects_by_id))
+                events.append(Events.IndexObjects(file_bytes, objects_by_id, lines))
             elif isinstance(event, Events.IndexObjects):
                 file_bytes = event.file_bytes
+                in_lines = event.lines
                 objects_by_id = event.objects
                 # dict[int, Object]
                 assert isinstance(objects_by_id, dict)
-                # vector stuff!
-                lines = file_bytes.split(b'\n')
                 requests_to_schedule = []
                 for obj_id, obj in objects_by_id.items():
-                    rendered = render_object(obj, in_lines=lines, file=False)
+                    rendered = render_object(obj, in_lines=in_lines, file=False)
                     if not rendered:
                         continue
                     request = EmbeddingRequest(
