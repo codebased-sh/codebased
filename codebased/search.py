@@ -130,9 +130,9 @@ def rerank_results(query: str, results: list[CombinedSearchResult], oai_client: 
     You're acting as the reranking component in a search engine for code.
     The following is a list of results from a search query.
     Please respond with a JSON list of result IDs, in order of relevance, excluding irrelevant or low quality results.
-    Longer is typically better. Implementations are typically better than tests/mocks/documentation, unless the query
+    Implementations are typically better than tests/mocks/documentation, unless the query
     asked for these specifically.
-    These tend to be longer! You can also infer based on the file path.
+    Prefer code elements like structs, classes, functions, etc. to entire files.
     Including any non-JSON content will cause the application to crash and / or increase latency, which is bad.
     """
     messages = [
