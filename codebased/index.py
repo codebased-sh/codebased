@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools
+
 import dataclasses
 import hashlib
 import json
@@ -202,26 +204,31 @@ class ThreadSafeCache(Generic[K, V]):
 class thread_local_cached_property:
     def __init__(self, func):
         self.func = func
-        self.local = threading.local()
+        self.name = None
+
+    def __set_name__(self, owner, name):
+        self.name = name
 
     def __get__(self, obj, cls=None):
         if obj is None:
             return self
 
-        if not hasattr(self.local, 'instance'):
-            self.local.instance = self.func(obj)
-        return self.local.instance
+        thread_id = threading.get_ident()
+        attr_name = f'_thread_local_cache_{self.name}_{thread_id}'
 
-    def __set_name__(self, owner, name):
-        self.name = name
+        if not hasattr(obj, attr_name):
+            setattr(obj, attr_name, self.func(obj))
+        return getattr(obj, attr_name)
 
     def clear_cache(self, obj):
-        if hasattr(self.local, 'instance'):
-            delattr(self.local, 'instance')
+        thread_id = threading.get_ident()
+        attr_name = f'_thread_local_cache_{self.name}_{thread_id}'
+        if hasattr(obj, attr_name):
+            delattr(obj, attr_name)
 
 
 def clear_thread_local_cache(func):
-    @wraps(func)
+    @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         result = func(self, *args, **kwargs)
         for name, attr in type(self).__dict__.items():
