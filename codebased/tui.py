@@ -242,14 +242,21 @@ class Codebased(App):
         return results_list
 
     def on_list_view_highlighted(self, event: ListView.Highlighted):
-        result_id = int(event.item.id.split("-")[1])
-        result = next(r for r in self.results.value if r.obj.id == result_id)
-        self.update_preview(result)
+        item = event.item
+        self.update_item_preview(item)
+
+    def update_item_preview(self, item: ListItem | None):
+        if item is not None:
+            result_id = int(item.id.split("-")[1])
+            try:
+                result = next(r for r in self.results.value if r.obj.id == result_id)
+                self.update_preview(result)
+            except StopIteration:
+                pass
 
     def on_list_view_selected(self, event: ListView.Selected):
-        result_id = int(event.item.id.split("-")[1])
-        result = next(r for r in self.results.value if r.obj.id == result_id)
-        self.update_preview(result)
+        item = event.item
+        self.update_item_preview(item)
 
     def update_preview(self, result: CombinedSearchResult):
         preview = self.query_one(Id.PREVIEW.selector, Static)
