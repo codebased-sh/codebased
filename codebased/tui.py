@@ -241,6 +241,11 @@ class Codebased(App):
         await results_list.clear()
         return results_list
 
+    def on_list_view_highlighted(self, event: ListView.Highlighted):
+        result_id = int(event.item.id.split("-")[1])
+        result = next(r for r in self.results.value if r.obj.id == result_id)
+        self.update_preview(result)
+
     def on_list_view_selected(self, event: ListView.Selected):
         result_id = int(event.item.id.split("-")[1])
         result = next(r for r in self.results.value if r.obj.id == result_id)
