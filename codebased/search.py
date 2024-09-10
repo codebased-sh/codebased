@@ -24,6 +24,32 @@ from codebased.models import Object
 from codebased.parser import render_object
 
 
+import re
+
+@dataclasses.dataclass(frozen=True)
+class Query:
+    exact: list[str]
+    keywords: list[str]
+    original: str
+
+    @classmethod
+    def parse(cls, query: str) -> Query:
+        original = query
+        exact = []
+        keywords = []
+
+        pattern = r'(?:"(?P<exact>[^"]+)"|(?P<keyword>\S+))'
+        matches = re.finditer(pattern, query)
+
+        for match in matches:
+            if match.group('exact'):
+                exact.append(match.group('exact'))
+            elif match.group('keyword'):
+                keywords.append(match.group('keyword'))
+
+        return cls(exact=exact, keywords=keywords, original=original)
+
+
 @dataclasses.dataclass
 class SemanticSearchResult:
     obj: Object

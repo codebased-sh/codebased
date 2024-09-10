@@ -18,6 +18,7 @@ from textual.widgets import Input, ListView, Static
 
 from codebased.index import find_root_git_repository, Flags, Config, Dependencies, index_paths
 from codebased.main import VERSION
+from codebased.search import Query
 from codebased.settings import Settings
 from codebased.tui import Codebased, Id
 
@@ -749,6 +750,54 @@ class TestCli(unittest.TestCase):
                 expected_file_count=HIDDEN_FOLDER_TEST_CASE.files,
                 expected_object_count=HIDDEN_FOLDER_TEST_CASE.objects
             )
+
+
+class TestQueryParsing(unittest.TestCase):
+    def test_parse_basic(self):
+        query = Query.parse('hello "world" how are you')
+        self.assertEqual(query.exact, ['world'])
+        self.assertEqual(query.keywords, ['hello', 'how', 'are', 'you'])
+        self.assertEqual(query.original, 'hello "world" how are you')
+
+    def test_parse_multiple_exact_phrases(self):
+        query = Query.parse('"hello world" test "foo bar" baz')
+        self.assertEqual(query.exact, ['hello world', 'foo bar'])
+        self.assertEqual(query.keywords, ['test', 'baz'])
+        self.assertEqual(query.original, '"hello world" test "foo bar" baz')
+
+    def test_parse_empty_query(self):
+        query = Query.parse('')
+        self.assertEqual(query.exact, [])
+        self.assertEqual(query.keywords, [])
+        self.assertEqual(query.original, '')
+
+    def test_parse_only_exact_phrase(self):
+        query = Query.parse('"this is a test"')
+        self.assertEqual(query.exact, ['this is a test'])
+        self.assertEqual(query.keywords, [])
+        self.assertEqual(query.original, '"this is a test"')
+
+    def test_parse_with_special_characters(self):
+        query = Query.parse('hello! "world?" how_are_you')
+        self.assertEqual(query.exact, ['world?'])
+        self.assertEqual(query.keywords, ['hello!', 'how_are_you'])
+        self.assertEqual(query.original, 'hello! "world?" how_are_you')
+
+    def test_parse_pathological_input(self):
+        # This test case creates a pathological input that could cause exponential backtracking
+        pathological_input = '"' + 'a' * 100 + '" ' + 'b' * 100
+        import time
+        start_time = time.time()
+        query = Query.parse(pathological_input)
+        end_time = time.time()
+        parsing_time = end_time - start_time
+
+        self.assertEqual(query.exact, ['a' * 100])
+        self.assertEqual(query.keywords, ['b' * 100])
+        self.assertEqual(query.original, pathological_input)
+
+        # Assert that parsing time is reasonable (e.g., less than 1 second)
+        self.assertLess(parsing_time, 1.0, "Parsing took too long, possible exponential backtracking")
 
 
 class AppTestBase(unittest.IsolatedAsyncioTestCase):
