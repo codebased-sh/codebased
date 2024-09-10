@@ -249,7 +249,7 @@ class Codebased(App):
     def update_preview(self, result: CombinedSearchResult):
         preview = self.query_one(Id.PREVIEW.selector, Static)
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
-        rendered_result, _ = render_result(self.config, self.flags,  result)
+        rendered_result, _ = render_result(self.config, self.flags, result, file=False, context=False)
         if rendered_result is None:
             return
         file_bytes = rendered_result.file_bytes
@@ -258,15 +258,14 @@ class Codebased(App):
         except UnicodeDecodeError:
             code = file_bytes.decode('utf-16')
         lexer = Syntax.guess_lexer(str(result.obj.path), code)
-        # find_highlights(Query.parse(self.flags.query), code)
-        highlight_lines = set(range(start_line + 1, end_line + 2))
+        highlight_lines = rendered_result.highlighted_lines
         syntax = Syntax(
             code,
             lexer,
             theme="dracula",
             line_numbers=True,
-            line_range=(min(highlight_lines), max(highlight_lines)),
-            highlight_lines=highlight_lines,
+            line_range=(start_line + 1, end_line + 1),
+            highlight_lines={start_line + x + 1 for x in highlight_lines},
             word_wrap=True
         )
         preview.update(syntax)
