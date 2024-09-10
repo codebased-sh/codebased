@@ -817,11 +817,67 @@ class TestQueryParsing(unittest.TestCase):
 class TestHighlighting(unittest.TestCase):
     def test_empty_query(self):
         query = Query.parse('')
-        self.assertEqual(find_highlights(query, ''), [])
-        self.assertEqual(find_highlights(query, '""'), [])
+        self.assertEqual(find_highlights(query, ''), ([], []))
+        self.assertEqual(find_highlights(query, '""'), ([], []))
         query = Query.parse('""')
-        self.assertEqual(find_highlights(query, ''), [])
-        self.assertEqual(find_highlights(query, '""'), [])
+        self.assertEqual(find_highlights(query, ''), ([], []))
+        self.assertEqual(find_highlights(query, '""'), ([], []))
+
+    def test_highlights(self):
+        query = Query.parse('hello "world" how are you')
+        highlights, lines = find_highlights(query, 'hello "world" how are you')
+        self.assertEqual(
+            highlights,
+            [(0, 5), (7, 12), (14, 17), (18, 21), (22, 25)]
+        )
+        self.assertEqual(lines, [(0, 0)] * len(highlights))
+        highlights, lines = find_highlights(query, "hello world how are you")
+        self.assertEqual(
+            highlights,
+            [(0, 5), (6, 11), (12, 15), (16, 19), (20, 23)]
+        )
+        self.assertEqual(lines, [(0, 0)] * len(highlights))
+
+    def test_out_of_order_highlights(self):
+        query = Query.parse('hello "world" how are you')
+        text = 'you are how hello world'
+        highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            highlights,
+            [(0, 3), (4, 7), (8, 11), (12, 17), (18, 23)]
+        )
+        self.assertEqual(lines, [(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)])
+        query = Query.parse('"sea world"')
+        text = "have you been to sea world?"
+        highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            highlights,
+            [(17, 26)]
+        )
+        self.assertEqual(lines, [(0, 0)])
+        text = "world seap"
+        highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            highlights,
+            []
+        )
+        self.assertEqual(lines, [])
+
+    def test_multiline_highlights(self):
+        query = Query.parse('hello "world" how are you')
+        text = 'hello\nworld\nhow\nare\nyou'
+        highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            highlights,
+            [(0, 5), (6, 11), (12, 15), (16, 19), (20, 23)]
+        )
+        self.assertEqual(lines, [(i, i) for i in range(5)])
+        query = Query.parse('"hello world"')
+        highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            highlights,
+            []
+        )
 
 
 class AppTestBase(unittest.IsolatedAsyncioTestCase):

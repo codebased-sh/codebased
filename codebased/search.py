@@ -22,6 +22,8 @@ from codebased.index import Dependencies, Flags, Config
 from codebased.models import Object
 from codebased.parser import render_object
 
+import bisect
+
 
 @dataclasses.dataclass(frozen=True)
 class Query:
@@ -49,8 +51,14 @@ class Query:
         return cls(phrases=phrases, keywords=keywords, original=original)
 
 
-def find_highlights(query: Query, text: str) -> list[tuple[int, int]]:
+def find_highlights(query: Query, text: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
     highlights = []
+
+    # Create a list of newline positions
+    newline_positions = [m.start() for m in re.finditer('\n', text)]
+
+    def get_line_number(char_index):
+        return bisect.bisect(newline_positions, char_index)
 
     # Highlight keywords
     for keyword in query.keywords:
@@ -71,7 +79,10 @@ def find_highlights(query: Query, text: str) -> list[tuple[int, int]]:
         else:
             merged.append((start, end))
 
-    return merged
+    # Create parallel list of line numbers
+    line_numbers = [(get_line_number(start), get_line_number(end - 1)) for start, end in merged]
+
+    return merged, line_numbers
 
 
 @dataclasses.dataclass
