@@ -156,6 +156,59 @@ HIDDEN_FOLDER_TREE = (
     )
 )
 
+NESTED_GITIGNORE_TREE = (
+    Path('.'),
+    (
+        (Path('.gitignore'), b'*.txt'),
+        # Should be ignored.
+        (Path('trash.txt'), b'Hello, world!'),
+        (Path('README.md'), b'Hello, world!'),
+        (Path('.git'), ()),
+        (
+            Path('app'), (
+                (Path('.gitignore'), b'node_modules/'),
+                # Should be ignored.
+                (Path('trash.txt'), b'Hello, world!'),
+                (Path('src'), (
+                    (Path('index.d.ts'), b'console.log("Hello, world!")'),
+                    (Path('index.js'), b'console.log("Hello, world!");'),
+                )),
+                (Path('package.json'), b'{"name": "slop"}'),
+                # Should be ignored.
+                (Path('node_modules'), (
+                    (Path('slop'), (
+                        (Path('slop.js'), b'console.log("Hello, world!");'),
+                        (Path('slop.d.ts'), b'declare function slop(): void;'),
+                    )),
+                )),
+            )
+        ),
+        (
+            Path('server'), (
+                (Path('.gitignore'), b'venv/\n__pycache__/'),
+                # Should be ignored.
+                (Path('trash.txt'), b'Hello, world!'),
+                (Path('src'), (
+                    (Path('__pycache__'), (
+                        (Path('main.cpython-311.pyc'), b''),
+                        (Path('__init__.cpython-311.pyc'), b''),
+                    )),
+                    (Path('main.py'), b'print("Hello, world!")'),
+                    (Path('__init__.py'), b''),
+                )),
+                (Path('setup.py'), b'{"name": "slop"}'),
+                # Should be ignored.
+                (Path('venv'), (
+                    (Path('slop'), (
+                        (Path('slop.py'), b'slop = 1'),
+                        (Path('__init__.py'), b''),
+                    )),
+                )),
+            )
+        ),
+    )
+)
+
 
 @dataclasses.dataclass
 class CliTestCase:
@@ -172,6 +225,7 @@ IGNORE_FOLDER_TEST_CASE = CliTestCase(tree=GITIGNORE_FOLDER_TREE, objects=4, fil
 HIDDEN_FOLDER_TEST_CASE = CliTestCase(tree=HIDDEN_FOLDER_TREE, objects=2, files=2)
 
 SIMPLE_REPO_TEST_CASE = CliTestCase(tree=SIMPLE_REPO_TREE, objects=2, files=2)
+NESTED_GITIGNORE_TEST_CASE = CliTestCase(tree=NESTED_GITIGNORE_TREE, objects=10, files=10)
 
 
 # Algebraically:
@@ -543,6 +597,26 @@ class TestCli(unittest.TestCase):
                 # -1 for the .py file because it"s ignored
                 expected_file_count=SIMPLE_REPO_TEST_CASE.files - 1 + 1,
                 expected_object_count=SIMPLE_REPO_TEST_CASE.objects - 1 + 1
+            )
+
+    def test_with_nested_gitignore(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = Path(tempdir).resolve()
+            create_tree(NESTED_GITIGNORE_TREE, path)
+            exit_code = 0
+            stdout = re.compile(b"Found Git repository " + str(path).encode("utf-8") + b".*")
+            stderr = re.compile(b".*Indexing " + path.name.encode("utf-8") + b".*", re.ASCII | re.DOTALL)
+            check_search_command(
+                args=["search", "Hello world"],
+                root=path,
+                cwd=path,
+                exit_code=exit_code,
+                stderr=stderr,
+                stdout=stdout,
+                # +1 for the gitignore file
+                # -1 for the .py file because it"s ignored
+                expected_file_count=NESTED_GITIGNORE_TEST_CASE.files,
+                expected_object_count=NESTED_GITIGNORE_TEST_CASE.objects
             )
 
     def test_rebuild_faiss_index(self):
