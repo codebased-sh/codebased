@@ -249,7 +249,7 @@ class Codebased(App):
     def update_preview(self, result: CombinedSearchResult):
         preview = self.query_one(Id.PREVIEW.selector, Static)
         start_line, end_line = result.obj.coordinates[0][0], result.obj.coordinates[1][0]
-        rendered_result, _ = render_result(self.config, result)
+        rendered_result, _ = render_result(self.config, self.flags,  result)
         if rendered_result is None:
             return
         file_bytes = rendered_result.file_bytes

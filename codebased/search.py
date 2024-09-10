@@ -51,6 +51,10 @@ class Query:
         return cls(phrases=phrases, keywords=keywords, original=original)
 
 
+def get_offsets(text: str, byte_start: int) -> tuple[int, int]:
+    return byte_start, ...
+
+
 def find_highlights(query: Query, text: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
     highlights = []
 
@@ -405,15 +409,19 @@ def deserialize_object_row(object_row: sqlite3.Row) -> Object:
 class RenderedResult(CombinedSearchResult):
     content: str
     file_bytes: bytes
+    highlights: list[tuple[int, int]]
+    highlighted_lines: list[int]
 
 
 def render_result(
         config: Config,
+        flags: Flags,
         result: CombinedSearchResult,
         **kwargs
 ) -> tuple[RenderedResult | None, dict[str, float]]:
     abs_path = config.root / result.obj.path
     times = {'disk': 0, 'render': 0}
+    parsed = Query.parse(flags.query)
     try:
         # TODO: Memoize, at least within a search result set.
         start = time.perf_counter()
@@ -429,13 +437,16 @@ def render_result(
         lines = decoded_text.splitlines()
         rendered = render_object(result.obj, lines, **kwargs)
         times['render'] += time.perf_counter() - start
+        highlights, highlighted_lines = find_highlights(parsed, rendered)
         rendered_result = RenderedResult(
             obj=result.obj,
             l2=result.l2,
             bm25=result.bm25,
             content_sha256=result.content_sha256,
             content=rendered,
-            file_bytes=underlying_file_bytes
+            file_bytes=underlying_file_bytes,
+            highlights=highlights,
+            highlighted_lines=sorted({y for x in highlighted_lines for y in x})
         )
         return rendered_result, times
     except FileNotFoundError:
@@ -444,12 +455,13 @@ def render_result(
 
 def render_results(
         config: Config,
+        flags: Flags,
         results: list[CombinedSearchResult],
         **kwargs
 ) -> tuple[list[RenderedResult], dict[str, float]]:
     rendered_results, times = [], {}
     for result in results:
-        rendered_result, result_times = render_result(config, result, **kwargs)
+        rendered_result, result_times = render_result(config, flags, result, **kwargs)
         rendered_results.append(rendered_result)
         for key, value in result_times.items():
             times[key] = times.get(key, 0) + value
@@ -458,9 +470,10 @@ def render_results(
 
 def print_results(
         config: Config,
+        flags: Flags,
         results: list[CombinedSearchResult]
 ):
-    rendered_results, times = render_results(config, results)
+    rendered_results, times = render_results(config, flags, results)
     for result in rendered_results:
         print(result.content)
         print()

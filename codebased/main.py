@@ -148,7 +148,7 @@ def search(
             thread.start()
         if flags.query:
             results, times = search_once(dependencies, flags)
-            print_results(config, results)
+            print_results(config, flags, results)
         else:
             Codebased(flags=flags, config=config, dependencies=dependencies).run()
     finally:
