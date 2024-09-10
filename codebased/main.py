@@ -15,7 +15,7 @@ from codebased.settings import Settings
 from codebased.stats import STATS
 from codebased.tui import Codebased
 
-VERSION = "0.4.11"
+VERSION = "0.4.12"
 
 cli = typer.Typer(
     name="Codebased CLI",
