@@ -3,14 +3,13 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
+import numpy as np
 import re
 import sqlite3
 import time
 import typing as T
 from pathlib import Path
-
-import math
-import numpy as np
 
 from codebased.utils import decode_text
 
@@ -24,30 +23,53 @@ from codebased.models import Object
 from codebased.parser import render_object
 
 
-import re
-
 @dataclasses.dataclass(frozen=True)
 class Query:
-    exact: list[str]
+    phrases: list[str]
     keywords: list[str]
     original: str
 
     @classmethod
     def parse(cls, query: str) -> Query:
         original = query
-        exact = []
+        phrases = []
         keywords = []
 
-        pattern = r'(?:"(?P<exact>[^"]+)"|(?P<keyword>\S+))'
+        pattern = r'(?:"(?P<phrase>[^"]+)"|(?P<keyword>\S+))'
         matches = re.finditer(pattern, query)
 
         for match in matches:
-            if match.group('exact'):
-                exact.append(match.group('exact'))
+            if match.group('phrase'):
+                phrases.append(match.group('phrase'))
             elif match.group('keyword'):
                 keywords.append(match.group('keyword'))
 
-        return cls(exact=exact, keywords=keywords, original=original)
+        return cls(phrases=phrases, keywords=keywords, original=original)
+
+
+def find_highlights(query: Query, text: str) -> list[tuple[int, int]]:
+    highlights = []
+
+    # Highlight keywords
+    for keyword in query.keywords:
+        for match in re.finditer(re.escape(keyword), text, re.IGNORECASE):
+            highlights.append(match.span())
+
+    # Highlight phrases
+    for phrase in query.phrases:
+        for match in re.finditer(re.escape(phrase), text, re.IGNORECASE):
+            highlights.append(match.span())
+
+    # Sort and merge overlapping highlights
+    highlights.sort(key=lambda x: x[0])
+    merged = []
+    for start, end in highlights:
+        if merged and merged[-1][1] >= start:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    return merged
 
 
 @dataclasses.dataclass

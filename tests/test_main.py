@@ -18,7 +18,7 @@ from textual.widgets import Input, ListView, Static
 
 from codebased.index import find_root_git_repository, Flags, Config, Dependencies, index_paths
 from codebased.main import VERSION
-from codebased.search import Query
+from codebased.search import Query, find_highlights
 from codebased.settings import Settings
 from codebased.tui import Codebased, Id
 
@@ -753,33 +753,43 @@ class TestCli(unittest.TestCase):
 
 
 class TestQueryParsing(unittest.TestCase):
+    def test_empty_query(self):
+        query = Query.parse('')
+        self.assertEqual(query.phrases, [])
+        self.assertEqual(query.keywords, [])
+        self.assertEqual(query.original, '')
+        query = Query.parse('""')
+        self.assertEqual(query.phrases, [])
+        self.assertEqual(query.keywords, [])
+        self.assertEqual(query.original, '""')
+
     def test_parse_basic(self):
         query = Query.parse('hello "world" how are you')
-        self.assertEqual(query.exact, ['world'])
+        self.assertEqual(query.phrases, ['world'])
         self.assertEqual(query.keywords, ['hello', 'how', 'are', 'you'])
         self.assertEqual(query.original, 'hello "world" how are you')
 
     def test_parse_multiple_exact_phrases(self):
         query = Query.parse('"hello world" test "foo bar" baz')
-        self.assertEqual(query.exact, ['hello world', 'foo bar'])
+        self.assertEqual(query.phrases, ['hello world', 'foo bar'])
         self.assertEqual(query.keywords, ['test', 'baz'])
         self.assertEqual(query.original, '"hello world" test "foo bar" baz')
 
     def test_parse_empty_query(self):
         query = Query.parse('')
-        self.assertEqual(query.exact, [])
+        self.assertEqual(query.phrases, [])
         self.assertEqual(query.keywords, [])
         self.assertEqual(query.original, '')
 
     def test_parse_only_exact_phrase(self):
         query = Query.parse('"this is a test"')
-        self.assertEqual(query.exact, ['this is a test'])
+        self.assertEqual(query.phrases, ['this is a test'])
         self.assertEqual(query.keywords, [])
         self.assertEqual(query.original, '"this is a test"')
 
     def test_parse_with_special_characters(self):
         query = Query.parse('hello! "world?" how_are_you')
-        self.assertEqual(query.exact, ['world?'])
+        self.assertEqual(query.phrases, ['world?'])
         self.assertEqual(query.keywords, ['hello!', 'how_are_you'])
         self.assertEqual(query.original, 'hello! "world?" how_are_you')
 
@@ -792,12 +802,22 @@ class TestQueryParsing(unittest.TestCase):
         end_time = time.time()
         parsing_time = end_time - start_time
 
-        self.assertEqual(query.exact, ['a' * 100])
+        self.assertEqual(query.phrases, ['a' * 100])
         self.assertEqual(query.keywords, ['b' * 100])
         self.assertEqual(query.original, pathological_input)
 
         # Assert that parsing time is reasonable (e.g., less than 1 second)
         self.assertLess(parsing_time, 1.0, "Parsing took too long, possible exponential backtracking")
+
+
+class TestHighlighting(unittest.TestCase):
+    def test_empty_query(self):
+        query = Query.parse('')
+        self.assertEqual(find_highlights(query, ''), [])
+        self.assertEqual(find_highlights(query, '""'), [])
+        query = Query.parse('""')
+        self.assertEqual(find_highlights(query, ''), [])
+        self.assertEqual(find_highlights(query, '""'), [])
 
 
 class AppTestBase(unittest.IsolatedAsyncioTestCase):
