@@ -194,7 +194,7 @@ NESTED_GITIGNORE_TREE = (
                         (Path('__init__.cpython-311.pyc'), b''),
                     )),
                     (Path('main.py'), b'print("Hello, world!")'),
-                    (Path('__init__.py'), b''),
+                    (Path('__init__.py'), b'from .main import *'),
                 )),
                 (Path('setup.py'), b'{"name": "slop"}'),
                 # Should be ignored.

@@ -119,7 +119,10 @@ def search(
         rebuild_faiss_index=rebuild_faiss_index,
         cached_only=cached_only,
         query=query,
-        background=background,
+        # We gather the set of gitignore files during startup and don't specially cache these.
+        # So if we ran the background worker without gathering the .gitignore files, we would not properly ignore
+        # changed files.
+        background=background and not cached_only,
         stats=stats,
         semantic=semantic,
         full_text_search=full_text,

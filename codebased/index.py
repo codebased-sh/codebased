@@ -21,6 +21,7 @@ import numpy as np
 import tiktoken
 from tqdm import tqdm
 
+from codebased.gitignore import parse_gitignore
 from codebased.settings import EmbeddingsConfig
 from codebased.utils import decode_text
 
@@ -225,6 +226,7 @@ class Dependencies:
     config: Config
     settings: Settings
     search_cache: ThreadSafeCache[Flags, list] = dataclasses.field(default_factory=ThreadSafeCache)
+    ignores: dict[Path, T.Callable[[Path], bool | None]] = dataclasses.field(default_factory=dict)
 
     @cached_property
     def openai_client(self) -> "OpenAI":
@@ -258,6 +260,20 @@ class Dependencies:
         except FileNotFoundError:
             return lambda _: False
 
+    def ignore_checker(self, path: Path) -> bool:
+        original_path = path
+        while path.is_relative_to(self.config.root):
+            try:
+                ignore_rule_set = self.ignores[path / '.gitignore']
+                ignore_result = ignore_rule_set(original_path)
+                if ignore_result is not None:
+                    return ignore_result
+            except KeyError:
+                continue
+            finally:
+                path = path.parent
+        return False
+
     @cached_property
     def request_scheduler(self) -> OpenAIRequestScheduler:
         return OpenAIRequestScheduler(self.openai_client, self.settings.embeddings)
@@ -290,7 +306,7 @@ def index_paths(
         *,
         total: bool = True
 ):
-    ignore = dependencies.gitignore
+    ignore = dependencies.ignore_checker
     db = dependencies.db
     index = dependencies.index
 
@@ -328,7 +344,19 @@ def index_paths(
                 path = event.path
                 if path == config.root / '.git' or path == config.root / '.codebased':
                     continue
-                for entry in os.scandir(path):
+                dir_entries = list(os.scandir(path))
+                # TODO: We don't handle changes to .gitignore files in the background worker
+                #  because it could require re-scanning the entire index.
+                #  i.e. if you remove an ignore rule, we might need to add previously ignored files to the index.
+                #  or if you add a new ignore rule, we might need to remove existing files from the index.
+                try:
+                    gitignore_file = next(e for e in dir_entries if e.name == '.gitignore' and e.is_file())
+                    ignore_path = Path(gitignore_file.path)
+                    gitignore_parsed = parse_gitignore(ignore_path, base_dir=path)
+                    dependencies.ignores[ignore_path] = gitignore_parsed
+                except StopIteration:
+                    pass
+                for entry in dir_entries:
                     entry_path = Path(entry.path)
                     if ignore(entry_path):  # noqa
                         continue
