@@ -35,14 +35,16 @@ class Query:
         phrases = []
         keywords = []
 
-        pattern = r'(?:"(?P<phrase>[^"]+)"|(?P<keyword>\S+))'
+        pattern = r'(?:"((?:[^"\\]|\\.)*)"|\S+)'
         matches = re.finditer(pattern, query)
 
         for match in matches:
-            if match.group('phrase'):
-                phrases.append(match.group('phrase'))
-            elif match.group('keyword'):
-                keywords.append(match.group('keyword'))
+            if match.group(1) is not None:
+                phrase = match.group(1).replace('\\"', '"')
+                if phrase:
+                    phrases.append(phrase)
+            else:
+                keywords.append(match.group())
 
         return cls(phrases=phrases, keywords=keywords, original=original)
 

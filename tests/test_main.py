@@ -763,6 +763,10 @@ class TestQueryParsing(unittest.TestCase):
         self.assertEqual(query.keywords, [])
         self.assertEqual(query.original, '""')
 
+    def test_escape_double_quotes(self):
+        query = Query.parse('"print(\\\"hello world\\\")"')
+        self.assertEqual(query.phrases, ['print("hello world")'])
+
     def test_parse_basic(self):
         query = Query.parse('hello "world" how are you')
         self.assertEqual(query.phrases, ['world'])
