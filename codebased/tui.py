@@ -5,8 +5,6 @@ import dataclasses
 import threading
 import time
 from enum import Enum
-from typing import TypeVar, Generic
-
 from rich.syntax import Syntax
 from textual import work, events
 from textual.app import App, ComposeResult
@@ -14,10 +12,11 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.message import Message
 from textual.reactive import var
 from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
+from typing import TypeVar, Generic
 
 from codebased.editor import open_editor, suspends
 from codebased.index import Flags, Config, Dependencies
-from codebased.search import search_once, render_results, RenderedResult, CombinedSearchResult, render_result
+from codebased.search import search_once, RenderedResult, CombinedSearchResult, render_result, find_highlights, Query
 
 
 class Id(str, Enum):
@@ -259,6 +258,7 @@ class Codebased(App):
         except UnicodeDecodeError:
             code = file_bytes.decode('utf-16')
         lexer = Syntax.guess_lexer(str(result.obj.path), code)
+        # find_highlights(Query.parse(self.flags.query), code)
         highlight_lines = set(range(start_line + 1, end_line + 2))
         syntax = Syntax(
             code,

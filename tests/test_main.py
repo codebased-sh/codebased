@@ -872,11 +872,67 @@ class TestHighlighting(unittest.TestCase):
             [(0, 5), (6, 11), (12, 15), (16, 19), (20, 23)]
         )
         self.assertEqual(lines, [(i, i) for i in range(5)])
+        text = '\nhello\nworld\n'
+        highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            highlights,
+            [(1, 6), (7, 12)]
+        )
+        self.assertEqual(
+            lines,
+            [(1, 1), (2, 2)]
+        )
         query = Query.parse('"hello world"')
         highlights, lines = find_highlights(query, text)
         self.assertEqual(
             highlights,
             []
+        )
+
+    def test_case_insensitive_highlights(self):
+        query = Query.parse('HELLO "WoRlD" how ARE you')
+
+        text = 'hello world HOW are YOU'
+        actual_highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            actual_highlights,
+            [(0, 5), (6, 11), (12, 15), (16, 19), (20, 23)]
+        )
+        self.assertEqual(lines, [(0, 0)] * 5)
+
+    def test_partial_phrase_match(self):
+        query = Query.parse('"hello world" python')
+        text = 'hello worlds of python'
+        actual_highlights, lines = find_highlights(query, text)
+        self.assertEqual(
+            actual_highlights,
+            [(0, 11), (16, 22)]
+        )
+
+    def test_overlapping_highlights(self):
+        query = Query.parse('overlapping overlap lap')
+        text = 'this is an overlapping text'
+        actual_highlights, lines = find_highlights(query, text)
+        left = text.index('overlapping')
+        self.assertEqual(
+            actual_highlights,
+            [(left, left + len('overlapping'))]
+        )
+        query = Query.parse('overlapping overlap lap over ping')
+        text = 'this is an overlapping text'
+        actual_highlights, lines = find_highlights(query, text)
+        left = text.index('overlapping')
+        self.assertEqual(
+            actual_highlights,
+            [(left, left + len('overlapping'))]
+        )
+        query = Query.parse('overlapping "an over"')
+        text = 'this is an overlapping text'
+        actual_highlights, lines = find_highlights(query, text)
+        left = text.index('an')
+        self.assertEqual(
+            actual_highlights,
+            [(left, left + len('an overlapping'))]
         )
 
 
