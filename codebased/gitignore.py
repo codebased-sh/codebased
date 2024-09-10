@@ -13,7 +13,7 @@ def handle_negation(file_path, rules: Reversible["IgnoreRule"]):
     for rule in reversed(rules):
         if rule.match(file_path):
             return not rule.negation
-    return False
+    return None
 
 
 def parse_gitignore(full_path, base_dir=None):
@@ -32,7 +32,7 @@ def parse_gitignore(full_path, base_dir=None):
             if rule:
                 rules.append(rule)
     if not any(r.negation for r in rules):
-        return lambda file_path: any(r.match(file_path) for r in rules)
+        return lambda file_path: any(r.match(file_path) for r in rules) or None
     else:
         # We have negation rules. We can't use a simple "any" to evaluate them.
         # Later rules override earlier rules.
