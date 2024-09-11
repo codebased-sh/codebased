@@ -18,7 +18,7 @@ def background_worker(
             return False
         if event.is_relative_to(config.git_directory):
             return False
-        if dependencies.gitignore(event):
+        if dependencies.ignore_checker(event):
             return False
         return True
 

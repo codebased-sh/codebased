@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Generic, TypeVar, Dict
 
 import faiss
-import gitignore_parser
 import numpy as np
 import tiktoken
 from tqdm import tqdm
@@ -274,14 +273,6 @@ class Dependencies:
         migrations.initialize()
         migrations.migrate()
         return db
-
-    @cached_property
-    def gitignore(self) -> T.Callable[[Path], bool]:
-        gitignore_path = self.config.root / '.gitignore'
-        try:
-            return gitignore_parser.parse_gitignore(gitignore_path, base_dir=self.config.root)
-        except FileNotFoundError:
-            return lambda _: False
 
     def ignore_checker(self, path: Path) -> bool:
         original_path = path
