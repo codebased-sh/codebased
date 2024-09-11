@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "codebased"
 version = "0.4.18"
-description = "AI-powered code search for the terminal."
+description = "AI-powered code search for the terminal and beyond."
 authors = ["Max Conradt <mhconradt@protonmail.com>"]
 readme = "README.md"
 repository = "https://github.com/codebased-sh/codebased"
