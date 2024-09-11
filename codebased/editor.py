@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Literal
 
+VSCODE_STYLE_EDITORS = {"code", "cursor"}
 VIM_STYLE_EDITORS = {"vi", "nvim", "vim"}
 
 
@@ -17,12 +18,12 @@ def open_editor(editor: Literal["vi", "idea", "code"], *, file: Path, row: int, 
         subprocess.run([editor, str(file), f"+{line_number}"])
     elif editor == "idea":
         subprocess.run(["idea", "--line", str(line_number), str(file)])
-    elif editor == "code":
-        subprocess.run(["code", "--goto", f"{file}:{line_number}:{column}"])
+    elif editor in VSCODE_STYLE_EDITORS:
+        subprocess.run([editor, "--goto", f"{file}:{line_number}:{column}"])
     else:
         raise NotImplementedError(editor)
 
 
-EDITOR = Literal["vi", "vim", "nvim", "idea", "code"]
+Editor = Literal["vi", "vim", "nvim", "idea", "code", "cursor"]
 
-ALLOWED_EDITORS = {"vi", "vim", "nvim", "idea", "code"}
+ALLOWED_EDITORS = {"idea", *VSCODE_STYLE_EDITORS, *VIM_STYLE_EDITORS}

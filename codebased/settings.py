@@ -6,13 +6,14 @@ import logging
 import os
 import sqlite3
 import sys
+import typing as T
 from pathlib import Path
 
 import toml
 
 from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS, DEFAULT_EDITOR
 from codebased.exceptions import MissingConfigFileException
-from codebased.editor import EDITOR, ALLOWED_EDITORS
+from codebased.editor import Editor, ALLOWED_EDITORS
 
 logger = logging.getLogger(__name__)
 PACKAGE_DIR: Path = Path(__file__).parent
@@ -32,7 +33,7 @@ class Settings:
     Combined class for Settings, Config, and Secrets
     """
     embeddings: EmbeddingsConfig = dataclasses.field(default_factory=EmbeddingsConfig)
-    editor: EDITOR = DEFAULT_EDITOR
+    editor: Editor = DEFAULT_EDITOR
     OPENAI_API_KEY: str = dataclasses.field(default_factory=lambda: os.environ.get("OPENAI_API_KEY"))
 
     @classmethod
@@ -92,7 +93,7 @@ class Settings:
         editor = cls.prompt_default_editor()
         env = os.getenv("OPENAI_API_KEY")
         if env:
-            openai_api_key = getpass.getpass(f"What is your OpenAI API key? [OPENAI_API_KEY={env[:7]}]: ")
+            openai_api_key = getpass.getpass(f"What is your OpenAI API key? [OPENAI_API_KEY={env[:7]}...]: ")
             if not openai_api_key:
                 openai_api_key = env
         else:
@@ -118,14 +119,14 @@ class Settings:
         return dimensions
 
     @classmethod
-    def prompt_default_editor(cls) -> str:
+    def prompt_default_editor(cls) -> Editor:
         prompt = f"What editor do you want to use? ({'|'.join(sorted(ALLOWED_EDITORS))}) [{DEFAULT_EDITOR}]: "
         while True:
             editor = input(prompt)
             if not editor:
                 return DEFAULT_EDITOR
             if editor in ALLOWED_EDITORS:
-                return editor
+                return T.cast(Editor, editor)
             print("Invalid editor. Try again.")
 
     def save(self, path: Path):
