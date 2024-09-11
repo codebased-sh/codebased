@@ -37,6 +37,7 @@ codebased = "codebased.main:cli"
 [tool.poetry.group.dev.dependencies]
 ipython = "^7.0"
 textual-dev = "^1.6.1"
+pytest = "^8.3.3"
 
 [build-system]
 requires = ["poetry-core"]
