@@ -647,6 +647,7 @@ def index_paths(
                 delete_ids.clear()
             elif isinstance(event, Events.Commit):
                 dependencies.search_cache.clear()
+                db.execute("insert into fts(fts) values ('optimize');")
                 db.commit()
                 faiss.write_index(index, str(config.index_path))
             elif isinstance(event, Events.DeleteNotVisited):
