@@ -115,7 +115,7 @@ class OpenAIRequestScheduler:
         self.batch_tokens += request_tokens
 
         futures = []
-        for future in futures:
+        for future in self.futures:
             if future.done():
                 # This may raise an exception that should propagate.
                 results.extend(future.result())
