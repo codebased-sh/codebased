@@ -106,6 +106,7 @@ class OpenAIRequestScheduler:
         request_tokens = len(self.encoding.encode(req.content, disallowed_special=()))
         results = []
         if request_tokens > 8192:
+            STATS.increment("codebased.embeddings.skipped.too_long")
             return results
         if len(self.batch) >= self.batch_size_limit or self.batch_tokens + request_tokens > self.batch_token_limit:
             self.futures.append(self.executor.submit(self._process_batch, self.batch))
@@ -580,6 +581,7 @@ def index_paths(
                 for obj_id, obj in objects_by_id.items():
                     rendered = render_object(obj, in_lines=in_lines, file=False)
                     if not rendered:
+                        STATS.increment("codebased.embeddings.skipped.empty")
                         continue
                     request = EmbeddingRequest(
                         object_id=obj_id,
