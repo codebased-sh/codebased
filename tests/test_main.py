@@ -323,7 +323,7 @@ def check_codebased_cli(
         # Pass through environment variables.
         env=os.environ,
     )
-    if proc.returncode != 0:
+    if proc.returncode != 0 and proc.returncode != exit_code:
         print(f'stdout: {proc.stdout.decode("utf-8")}')
         print(f'stderr: {proc.stderr.decode("utf-8")}')
     assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {proc.stdout}, stderr: {proc.stderr}'
@@ -1055,7 +1055,6 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
                 search_bar = self.app.query_one(f"#{Id.SEARCH_INPUT}", Input)
                 self.assertEqual(search_bar.value, so_far)
             result_list = self.app.query_one(f"#{Id.RESULTS_LIST}", ListView)
-            print(result_list)
             # There should be 2 items.
             self.assertEqual(len(result_list.children), 2)
             preview = self.app.query_one(f"#{Id.PREVIEW}", Static)
