@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import typing as T
 from pathlib import Path
-from typing import Literal
 
 
 @dataclasses.dataclass
@@ -43,5 +42,3 @@ class Embedding:
 
 
 Coordinates = T.Tuple[T.Tuple[int, int], T.Tuple[int, int]]
-
-EDITOR = Literal["vi", "idea", "code"]

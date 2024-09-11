@@ -12,7 +12,7 @@ import toml
 
 from codebased.constants import DEFAULT_MODEL, DEFAULT_MODEL_DIMENSIONS, DEFAULT_EDITOR
 from codebased.exceptions import MissingConfigFileException
-from codebased.models import EDITOR
+from codebased.editor import EDITOR, ALLOWED_EDITORS
 
 logger = logging.getLogger(__name__)
 PACKAGE_DIR: Path = Path(__file__).parent
@@ -45,8 +45,10 @@ class Settings:
 
     def __post_init__(self):
         if not self.OPENAI_API_KEY:
-            raise ValueError("Codebased requires an OpenAI API key for now."
-                             "Join the Discord to access to a key for testing.")
+            raise ValueError(
+                "Codebased requires an OpenAI API key for now."
+                "Join the Discord to access to a key for testing."
+            )
 
     @staticmethod
     def verify():
@@ -116,8 +118,15 @@ class Settings:
         return dimensions
 
     @classmethod
-    def prompt_default_editor(cls):
-        return input(f"What editor do you want to use? (vi|idea|code) [{DEFAULT_EDITOR}]: ") or DEFAULT_EDITOR
+    def prompt_default_editor(cls) -> str:
+        prompt = f"What editor do you want to use? ({'|'.join(sorted(ALLOWED_EDITORS))}) [{DEFAULT_EDITOR}]: "
+        while True:
+            editor = input(prompt)
+            if not editor:
+                return DEFAULT_EDITOR
+            if editor in ALLOWED_EDITORS:
+                return editor
+            print("Invalid editor. Try again.")
 
     def save(self, path: Path):
         with open(path, 'w') as f:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import subprocess
 from pathlib import Path
 from typing import Literal
@@ -19,3 +21,8 @@ def open_editor(editor: Literal["vi", "idea", "code"], *, file: Path, row: int, 
         subprocess.run(["code", "--goto", f"{file}:{line_number}:{column}"])
     else:
         raise NotImplementedError(editor)
+
+
+EDITOR = Literal["vi", "vim", "nvim", "idea", "code"]
+
+ALLOWED_EDITORS = {"vi", "vim", "nvim", "idea", "code"}
