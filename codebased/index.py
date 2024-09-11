@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import concurrent.futures
+
 import functools
 
 import dataclasses
@@ -89,6 +91,12 @@ class OpenAIRequestScheduler:
         self.batch_tokens = 0
         self.batch_size_limit = 2048
         self.batch_token_limit = 400_000
+        self.max_concurrent_requests = 8
+        self.executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_concurrent_requests,
+            thread_name_prefix="OpenAIRequestScheduler"
+        )
+        self.futures = []
 
     @cached_property
     def encoding(self) -> tiktoken.Encoding:
@@ -100,23 +108,37 @@ class OpenAIRequestScheduler:
         if request_tokens > 8192:
             return results
         if len(self.batch) >= self.batch_size_limit or self.batch_tokens + request_tokens > self.batch_token_limit:
-            results = self.flush()
-            self.batch.clear()
+            self.futures.append(self.executor.submit(self._process_batch, self.batch))
+            self.batch = []
             self.batch_tokens = 0
         self.batch.append(req)
         self.batch_tokens += request_tokens
+
+        futures = []
+        for future in futures:
+            if future.done():
+                # This may raise an exception that should propagate.
+                results.extend(future.result())
+            else:
+                futures.append(future)
+        self.futures = futures
+
         return results
 
     def flush(self) -> T.Iterable[Embedding]:
-        if not self.batch:
-            return []
-        results = create_openai_embeddings_sync_batched(
-            self.oai_client,
-            self.batch,
-            self.embedding_config
-        )
-        self.batch = []
-        self.batch_tokens = 0
+        if self.batch:
+            self.futures.append(self.executor.submit(self._process_batch, self.batch))
+            self.batch = []
+            self.batch_tokens = 0
+
+        results = []
+        for future in concurrent.futures.as_completed(self.futures):
+            results.extend(future.result())
+        self.futures.clear()
+        return results
+
+    def _process_batch(self, batch: T.List[EmbeddingRequest]) -> T.Iterable[Embedding]:
+        results = create_openai_embeddings_sync_batched(self.oai_client, batch, self.embedding_config)
         return results
 
 
