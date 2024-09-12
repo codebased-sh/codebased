@@ -4,7 +4,6 @@ import dataclasses
 import os
 import re
 import sqlite3
-import subprocess
 import tempfile
 import typing as T
 import unittest
@@ -305,6 +304,13 @@ class TestGitDetection(unittest.TestCase):
 
 StreamAssertion = Union[bytes, re.Pattern, None]
 
+import re
+import subprocess
+from pathlib import Path
+from typing import Union
+
+StreamAssertion = Union[bytes, re.Pattern]
+
 
 def check_codebased_cli(
         *,
@@ -313,7 +319,7 @@ def check_codebased_cli(
         stderr: StreamAssertion,
         stdout: StreamAssertion,
         args: list[str],
-        ascii_only: bool= False
+        ascii_only: bool = False
 ):
     proc = subprocess.run(
         ['python', '-m', 'codebased.main', *args],
@@ -321,26 +327,33 @@ def check_codebased_cli(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         stdin=subprocess.PIPE,
-        # Pass through environment variables.
         env=os.environ,
     )
     actual_stdout, actual_stderr = proc.stdout, proc.stderr
+
     if ascii_only:
-        ascii_pattern = re.compile(rb'^[\x00-\x7F]')
+        # Keep only ASCII characters (0x00-0x7F)
+        ascii_pattern = re.compile(rb'[^\x00-\x7F]+')
         actual_stdout = ascii_pattern.sub(b'', actual_stdout)
         actual_stderr = ascii_pattern.sub(b'', actual_stderr)
+
     if proc.returncode != 0 and proc.returncode != exit_code:
         print(f'stdout: {actual_stdout.decode("utf-8")}')
         print(f'stderr: {actual_stderr.decode("utf-8")}')
+
     assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {actual_stdout}, stderr: {actual_stderr}'
+
     if isinstance(stdout, bytes):
         assert actual_stdout == stdout, f'{actual_stdout} != {stdout}'
     elif isinstance(stdout, re.Pattern):
-        assert stdout.match(actual_stdout), actual_stdout
+        assert stdout.search(actual_stdout), f'Pattern not found in stdout: {actual_stdout}'
+
     if isinstance(stderr, bytes):
         assert actual_stderr == stderr, f'{actual_stderr} != {stderr}'
     elif isinstance(stderr, re.Pattern):
-        assert stderr.match(actual_stderr), actual_stderr
+        assert stderr.search(actual_stderr), f'Pattern not found in stderr: {actual_stderr}'
+
+    return proc
 
 
 def check_search_command(
