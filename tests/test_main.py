@@ -312,7 +312,8 @@ def check_codebased_cli(
         exit_code: int,
         stderr: StreamAssertion,
         stdout: StreamAssertion,
-        args: list[str]
+        args: list[str],
+        ascii_only: bool= False
 ):
     proc = subprocess.run(
         ['python', '-m', 'codebased.main', *args],
@@ -323,18 +324,23 @@ def check_codebased_cli(
         # Pass through environment variables.
         env=os.environ,
     )
+    actual_stdout, actual_stderr = proc.stdout, proc.stderr
+    if ascii_only:
+        ascii_pattern = re.compile(rb'^[\x00-\x7F]')
+        actual_stdout = ascii_pattern.sub(b'', actual_stdout)
+        actual_stderr = ascii_pattern.sub(b'', actual_stderr)
     if proc.returncode != 0 and proc.returncode != exit_code:
-        print(f'stdout: {proc.stdout.decode("utf-8")}')
-        print(f'stderr: {proc.stderr.decode("utf-8")}')
-    assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {proc.stdout}, stderr: {proc.stderr}'
+        print(f'stdout: {actual_stdout.decode("utf-8")}')
+        print(f'stderr: {actual_stderr.decode("utf-8")}')
+    assert proc.returncode == exit_code, f'{proc.returncode} != {exit_code}, stdout: {actual_stdout}, stderr: {actual_stderr}'
     if isinstance(stdout, bytes):
-        assert proc.stdout == stdout, f'{proc.stdout} != {stdout}'
+        assert actual_stdout == stdout, f'{actual_stdout} != {stdout}'
     elif isinstance(stdout, re.Pattern):
-        assert stdout.match(proc.stdout), proc.stdout
+        assert stdout.match(actual_stdout), actual_stdout
     if isinstance(stderr, bytes):
-        assert proc.stderr == stderr, f'{proc.stderr} != {stderr}'
+        assert actual_stderr == stderr, f'{actual_stderr} != {stderr}'
     elif isinstance(stderr, re.Pattern):
-        assert stderr.match(proc.stderr), proc.stderr
+        assert stderr.match(actual_stderr), actual_stderr
 
 
 def check_search_command(
@@ -529,14 +535,16 @@ class TestCli(unittest.TestCase):
                     rb".*COMMAND.*--version.*-V.*--help.*Commands.*search.*",
                     re.DOTALL | re.ASCII
                 ),
-                args=["--help"]
+                args=["--help"],
+                ascii_only=True
             )
             check_codebased_cli(
                 cwd=path,
                 exit_code=exit_code,
                 stderr=stderr,
                 stdout=re.compile(rb".*search.*QUERY.*", re.DOTALL | re.ASCII),
-                args=["search", "--help"]
+                args=["search", "--help"],
+                ascii_only=True
             )
             # Note: We"re not checking the exact help output as it might change and be system-dependent
 
