@@ -98,7 +98,7 @@ def search(
             help="Use full-text search.",
         ),
         top_k: int = typer.Option(
-            10,
+            32,
             "-k",
             "--top-k",
             help="Number of results to return.",
@@ -108,6 +108,11 @@ def search(
             True,
             "--background/--no-background",
             help="Run in the background.",
+        ),
+        rerank: bool = typer.Option(
+            True,
+            "--rerank/--no-rerank",
+            help="Rerank results.",
         ),
 ):
     sqlite_version = tuple(map(int, sqlite3.sqlite_version.split('.')))
@@ -127,7 +132,7 @@ def search(
         semantic=semantic,
         full_text_search=full_text,
         top_k=top_k,
-        rerank=False
+        rerank=rerank
     )
     config = Config(flags=flags)
     settings = Settings.always()
