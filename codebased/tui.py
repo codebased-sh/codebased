@@ -233,8 +233,11 @@ class Codebased(App):
         if self.results.value:
             try:
                 self.update_preview(self.results.value[0])
-            except IndexError:
                 return
+            except IndexError:
+                pass
+        preview = self.query_one(Id.PREVIEW.selector, Static)
+        preview.update("")
 
     async def clear_results(self):
         results_list = self.query_one(Id.RESULTS_LIST.selector, ListView)
