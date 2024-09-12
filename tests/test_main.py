@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import string
+
 import dataclasses
 import os
 import re
@@ -333,7 +335,7 @@ def check_codebased_cli(
 
     if ascii_only:
         # Keep only ASCII characters (0x00-0x7F)
-        ascii_pattern = re.compile(rb'[^\x00-\x7F]+')
+        ascii_pattern = re.compile(b"[^" + re.escape(string.printable.encode()) + b"]")
         actual_stdout = ascii_pattern.sub(b'', actual_stdout)
         actual_stderr = ascii_pattern.sub(b'', actual_stderr)
 
