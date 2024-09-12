@@ -1051,7 +1051,8 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
             stats=False,
             semantic=True,
             full_text_search=True,
-            top_k=10
+            top_k=10,
+            radius=1.0
         )
         self.settings = Settings()
         self.config = Config(flags=self.flags)

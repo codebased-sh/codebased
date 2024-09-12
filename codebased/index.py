@@ -714,3 +714,4 @@ class Flags:
     top_k: int
     query: str
     rerank: bool
+    radius: float

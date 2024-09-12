@@ -114,6 +114,13 @@ def search(
             "--rerank/--no-rerank",
             help="Rerank results.",
         ),
+        radius: float = typer.Option(
+            1.0,
+            "--radius",
+            help="Maximum L2 distance for semantic search.",
+            min=0.0,
+            max=2.0,
+        ),
 ):
     sqlite_version = tuple(map(int, sqlite3.sqlite_version.split('.')))
     if sqlite_version < (3, 34, 0):
@@ -132,7 +139,8 @@ def search(
         semantic=semantic,
         full_text_search=full_text,
         top_k=top_k,
-        rerank=rerank
+        rerank=rerank,
+        radius=radius
     )
     config = Config(flags=flags)
     settings = Settings.always()
