@@ -1,3 +1,5 @@
 I'm Max Conradt, founder of Codebased.
 If you ever need any help, text me at +1 (913) 808-7343.
 You can also check out the Discord: https://discord.gg/cQrQCAKZ.
+The Discord server has an OpenAI key for early adopters to use: https://discord.com/channels/1276709641073590364/1276709641744814132/1282513891787800659.
+There's a limit of $10 in usage per day, but that should be sufficient for regular use, even on large projects.
