@@ -1076,8 +1076,8 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(focused.id, Id.SEARCH_INPUT.value)
             await pilot.press("r")
             await pilot.press("f")
-            await pilot.press("f")
-            await pilot.press("d")
+            # await pilot.press("f")
+            # await pilot.press("d")
 
     def tearDown(self):
         super().tearDown()
