@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-
 import contextlib
 import dataclasses
 import threading
@@ -11,7 +9,6 @@ from rich.syntax import Syntax
 from textual import work, events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.css.query import NoMatches
 from textual.message import Message
 from textual.reactive import var
 from textual.widgets import Input, Footer, Header, Static, ListView, ListItem
@@ -211,17 +208,7 @@ class Codebased(App):
 
         if not self.results.set(message.start, message.results):
             return
-        t_start = time.monotonic()
-        # We are actually faster than the UI can update about half of the time.
-        while True:
-            try:
-                latency = self.query_one(Id.LATENCY.selector, Static)
-                break
-            except NoMatches:
-                if time.monotonic() - t_start > 0.01:
-                    raise
-                await asyncio.sleep(0.001)
-        latency.update(print_latency(message.latency, message.times))
+        self.query_one(Id.LATENCY.selector, Static).update(print_latency(message.latency, message.times))
         self.post_message(self.RenderResults())
 
     async def on_codebased_render_results(self, event: RenderResults):
