@@ -58,7 +58,8 @@ class Settings:
 
     @classmethod
     def create(cls):
-        greet()
+        if sys.stdin.isatty():
+            greet()
         CONFIG_DIRECTORY.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.touch()
         # TODO: Windows?
