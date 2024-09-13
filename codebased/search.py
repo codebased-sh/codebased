@@ -184,6 +184,8 @@ def rerank_results(
         results: list[CombinedSearchResult],
         oai_client: "OpenAI"
 ) -> list[CombinedSearchResult]:
+    if not results:
+        return results
     json_results = [
         {
             "id": r.obj.id,
