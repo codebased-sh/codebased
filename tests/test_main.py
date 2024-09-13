@@ -20,6 +20,7 @@ from textual.widgets import Input, ListView, Static
 
 from codebased.index import find_root_git_repository, Flags, Config, Dependencies, index_paths
 from codebased.main import VERSION
+from codebased.parser import parse_objects
 from codebased.search import Query, find_highlights
 from codebased.settings import Settings
 from codebased.tui import Codebased, Id
@@ -1110,3 +1111,26 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
         super().tearDown()
         self.tempdir.cleanup()
         self.dependencies.db.close()
+
+
+class TestParser(unittest.TestCase):
+    def test_typescript(self):
+        objects = parse_objects(
+            Path('src/router.ts'),
+            """
+            const data = [
+                { id: 1, name: 'John', age: 30 },
+                { id: 2, name: 'Jane', age: 25 },
+                { id: 3, name: 'Bob', age: 35 },
+            ];
+            
+            const hidePII = (datum: object) => {
+                return {id: datum.id};
+            };
+            """.encode()
+        )
+        assert len(objects) == 3
+        file_o, data_o, hide_pii_o = objects
+        assert file_o.name == 'src/router.ts'
+        assert data_o.name == 'data'
+        assert hide_pii_o.name == 'hidePII'
