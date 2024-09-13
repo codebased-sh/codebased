@@ -170,7 +170,7 @@ def search(
     finally:
         dependencies.db.close()
         shutdown_event.set()
-        if thread is not None:
+        if thread is not None and thread.is_alive():
             thread.join()
     if flags.stats:
         print(STATS.dumps())
