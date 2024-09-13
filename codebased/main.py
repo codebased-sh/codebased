@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 import sys
 import threading
@@ -115,9 +116,9 @@ def search(
             help="Rerank results.",
         ),
         radius: float = typer.Option(
-            1.0,
+            math.sqrt(2),
             "--radius",
-            help="Maximum L2 distance for semantic search.",
+            help="Maximum L2 distance for semantic search. The higher this is, the more results there are.",
             min=0.0,
             max=2.0,
         ),
