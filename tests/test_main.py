@@ -225,7 +225,7 @@ class CliTestCase:
         create_tree(self.tree, path)
 
 
-IGNORE_FOLDER_TEST_CASE = CliTestCase(tree=GITIGNORE_FOLDER_TREE, objects=4, files=4)
+IGNORE_FOLDER_TEST_CASE = CliTestCase(tree=GITIGNORE_FOLDER_TREE, objects=6, files=4)
 
 HIDDEN_FOLDER_TEST_CASE = CliTestCase(tree=HIDDEN_FOLDER_TREE, objects=2, files=2)
 
