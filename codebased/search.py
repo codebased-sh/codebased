@@ -131,10 +131,11 @@ def semantic_search(dependencies: Dependencies, flags: Flags) -> tuple[list[Sema
     times['embedding'] = end - start
 
     start = time.perf_counter()
-    lims, distances, object_ids = dependencies.index.range_search(
+    _, distances, object_ids = dependencies.index.range_search(
         np.array([emb]),
         flags.radius,
     )
+    distances, object_ids = distances[:flags.top_k], object_ids[:flags.top_k]
     end = time.perf_counter()
     times['vss'] = end - start
 
