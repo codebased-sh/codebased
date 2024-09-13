@@ -1116,7 +1116,7 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
 
 
 @pytest.mark.parametrize("file_type", ["ts", "js", "jsx", "tsx"])
-def test_javascript_constants(file_type):
+def test_javascript_top_level_variable_declarations(file_type):
     source = textwrap.dedent(
         """
         let stringData = "Hello, world!";
