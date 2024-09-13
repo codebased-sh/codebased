@@ -1,12 +1,19 @@
 # Codebased
 
-> Find what you're looking for, not just what you typed.
-
-Codebased is an AI-powered code search tool for the terminal and beyond.
+Codebased is the most powerful code search tool that runs on your computer.
 
 Here's why it's great:
+- Search, simplified: Combines semantic and full-text search to find what you're looking for, not just what you typed.
+- Search code, not just text: Searches for complete code structures, not just lines of text, in 11 languages.
+- Ignores uninteresting files: Respects your `.gitignore` file(s) and ignores hidden directories.
+- Instant editing: Selecting a search result opens your favorite editor at the correct file and line number.
+- Fast: Indexes your code in seconds, searches in milliseconds, and updates in real-time as you edit your code.
+- Open-source, runs locally: No code is stored on remote servers.
 
-- Parses the AST of your codebase in 11 different languages.
+## Table of Contents
+
+- [Appendix](#appendix)
+    - [Languages](#languages)
 
 # Appendix
 
