@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import textwrap
+
 import pytest
 import string
 
@@ -1115,10 +1117,15 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
 
 class TestParser(unittest.TestCase):
     def test_typescript(self):
-        objects = parse_objects(
-            Path('src/router.ts'),
+        source = textwrap.dedent(
             """
-            const data = [
+            const stringData = "Hello, world!";
+            const numberData = 123;
+            const booleanData = true;
+            const nullData = null;
+            const undefinedData = undefined;
+            const objectData = { id: 1, name: 'John', age: 30 };
+            const arrayData = [
                 { id: 1, name: 'John', age: 30 },
                 { id: 2, name: 'Jane', age: 25 },
                 { id: 3, name: 'Bob', age: 35 },
@@ -1127,10 +1134,23 @@ class TestParser(unittest.TestCase):
             const hidePII = (datum: object) => {
                 return {id: datum.id};
             };
-            """.encode()
+            
+            const sanitizedData = hidePII(objectData);
+            """
+        ).encode()
+        objects = parse_objects(
+            Path('src/router.ts'),
+            source
         )
-        assert len(objects) == 3
-        file_o, data_o, hide_pii_o = objects
+        assert len(objects) == 9
+        file_o, string_o, number_o, boolean_o, null_o, undefined_o, object_o, array_o, hide_pii_o, sanitized_o = objects
         assert file_o.name == 'src/router.ts'
-        assert data_o.name == 'data'
+        assert string_o.name == 'stringData'
+        assert number_o.name == 'numberData'
+        assert boolean_o.name == 'booleanData'
+        assert null_o.name == 'nullData'
+        assert undefined_o.name == 'undefinedData'
+        assert object_o.name == 'objectData'
+        assert array_o.name == 'data'
         assert hide_pii_o.name == 'hidePII'
+        assert sanitized_o.name == 'sanitizedData'
