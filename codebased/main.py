@@ -116,6 +116,14 @@ def search(
             help="Rerank results.",
         ),
         radius: float = typer.Option(
+            # There's a systematic difference between the "search query" vector space and the "code" vector space.
+            # The pairwise distance between two code embedding vectors from the same codebase often clusters around 1.2.
+            # This distance is also Chi-distributed, which means we can use the CDF to determine a distance cutoff.
+            # This can be higher or lower depending on whether the codebase is written in multiple languages.
+            # However, there's a systematic difference between "query" vector space and "code" vector space.
+            # This means we need to increase the radius to account for this discrepancy.
+            # In the future, we could (deep) learn a projection from "query" vector space to "code" vector space.
+            # or even project each space to a unified space.
             math.sqrt(2),
             "--radius",
             help="Maximum L2 distance for semantic search. The higher this is, the more results there are.",
