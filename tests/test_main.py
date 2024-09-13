@@ -1115,42 +1115,62 @@ class AppTestBase(unittest.IsolatedAsyncioTestCase):
         self.dependencies.db.close()
 
 
-class TestParser(unittest.TestCase):
-    def test_typescript(self):
-        source = textwrap.dedent(
-            """
-            const stringData = "Hello, world!";
-            const numberData = 123;
-            const booleanData = true;
-            const nullData = null;
-            const undefinedData = undefined;
-            const objectData = { id: 1, name: 'John', age: 30 };
-            const arrayData = [
-                { id: 1, name: 'John', age: 30 },
-                { id: 2, name: 'Jane', age: 25 },
-                { id: 3, name: 'Bob', age: 35 },
-            ];
-            
-            const hidePII = (datum: object) => {
-                return {id: datum.id};
+@pytest.mark.parametrize("file_type", ["ts", "js", "jsx", "tsx"])
+def test_javascript_constants(file_type):
+    source = textwrap.dedent(
+        """
+        let stringData = "Hello, world!";
+        export const numberData = 123;
+        const booleanData = true;
+        export const nullData = null;
+        export let undefinedData = undefined;
+        export var objectData = { id: 1, name: 'John', age: 30 };
+        var arrayData = [
+            { id: 1, name: 'John', age: 30 },
+            { id: 2, name: 'Jane', age: 25 },
+            { id: 3, name: 'Bob', age: 35 },
+        ];
+        
+        export const hidePII = (datum) => {
+            return {id: datum.id};
+        };
+        function maskPII(datum) {
+            return {
+                id: datum.id,
+                name: datum.name.replace(/./g, '*'),
+                age: string(datum.age).replace(/./g, '*'),
             };
-            
-            const sanitizedData = hidePII(objectData);
-            """
-        ).encode()
-        objects = parse_objects(
-            Path('src/router.ts'),
-            source
-        )
-        assert len(objects) == 9
-        file_o, string_o, number_o, boolean_o, null_o, undefined_o, object_o, array_o, hide_pii_o, sanitized_o = objects
-        assert file_o.name == 'src/router.ts'
-        assert string_o.name == 'stringData'
-        assert number_o.name == 'numberData'
-        assert boolean_o.name == 'booleanData'
-        assert null_o.name == 'nullData'
-        assert undefined_o.name == 'undefinedData'
-        assert object_o.name == 'objectData'
-        assert array_o.name == 'data'
-        assert hide_pii_o.name == 'hidePII'
-        assert sanitized_o.name == 'sanitizedData'
+        }
+        
+        export const sanitizedData = hidePII(objectData);
+        """
+    ).encode()
+    file_name = f'src/constants.{file_type}'
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 11
+    file_o, string_o, number_o, boolean_o, null_o, undefined_o, object_o, array_o, hide_pii_o, mask_pii_o, sanitized_o = objects
+    assert file_o.name == file_name
+    assert file_o.kind == 'file'
+    assert string_o.name == 'stringData'
+    assert string_o.kind == 'definition.constant'
+    assert number_o.name == 'numberData'
+    assert number_o.kind == 'definition.constant'
+    assert boolean_o.name == 'booleanData'
+    assert boolean_o.kind == 'definition.constant'
+    assert null_o.name == 'nullData'
+    assert null_o.kind == 'definition.constant'
+    assert undefined_o.name == 'undefinedData'
+    assert undefined_o.kind == 'definition.constant'
+    assert object_o.name == 'objectData'
+    assert object_o.kind == 'definition.constant'
+    assert array_o.name == 'arrayData'
+    assert array_o.kind == 'definition.constant'
+    assert hide_pii_o.name == 'hidePII'
+    assert hide_pii_o.kind == 'definition.function'
+    assert mask_pii_o.name == 'maskPII'
+    assert mask_pii_o.kind == 'definition.function'
+    assert sanitized_o.name == 'sanitizedData'
+    assert sanitized_o.kind == 'definition.constant'

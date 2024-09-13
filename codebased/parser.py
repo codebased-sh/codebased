@@ -295,6 +295,42 @@ _TYPESCRIPT_ONLY_TAG_QUERY = """
         name: (type_identifier) @name) @definition.interface
       """
 _JAVASCRIPT_TAG_QUERY = """
+(program
+    (lexical_declaration
+        (variable_declarator
+            name: (identifier) @name
+            value: (_ !parameters)
+        )
+    ) @definition.constant)
+
+(program
+    (export_statement
+        (lexical_declaration
+            (variable_declarator
+                name: (identifier) @name
+                value: (_ !parameters)
+            )
+        )
+    ) @definition.constant)
+
+(program
+    (variable_declaration
+        (variable_declarator
+            name: (identifier) @name
+            value: (_ !parameters)
+        )
+    ) @definition.constant)
+
+(program
+    (export_statement
+        (variable_declaration
+            (variable_declarator
+                name: (identifier) @name
+                value: (_ !parameters)
+            )
+        )
+    ) @definition.constant)
+
 (method_definition
   name: (property_identifier) @name) @definition.method
 
@@ -331,21 +367,6 @@ _JAVASCRIPT_TAG_QUERY = """
 (pair
   key: (property_identifier) @name
   value: [(arrow_function) (function_expression)]) @definition.function
-
-(export_statement 
-  value: (assignment_expression 
-    left: (identifier) @name 
-    right: ([
-      (number)
-      (string)
-      (identifier)
-      (undefined)
-      (null)
-      (new_expression)
-      (binary_expression)
-      (call_expression)
-    ]))) @definition.constant
-    
     """
 _TYPESCRIPT_TAG_QUERY = '\n'.join([_TYPESCRIPT_ONLY_TAG_QUERY, _JAVASCRIPT_TAG_QUERY])
 
