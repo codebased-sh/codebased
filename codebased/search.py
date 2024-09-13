@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import textwrap
+
 import dataclasses
 import hashlib
 import json
@@ -176,7 +178,11 @@ def quote_fts_query(query: str) -> str:
     return query
 
 
-def rerank_results(query: str, results: list[CombinedSearchResult], oai_client: "OpenAI") -> list[CombinedSearchResult]:
+def rerank_results(
+        query: str,
+        results: list[CombinedSearchResult],
+        oai_client: "OpenAI"
+) -> list[CombinedSearchResult]:
     json_results = [
         {
             "id": r.obj.id,
@@ -189,15 +195,18 @@ def rerank_results(query: str, results: list[CombinedSearchResult], oai_client: 
         for r in results
     ]
     json_results = json.dumps(json_results)
-    system_prompt = """
-    You're acting as the reranking component in a search engine for code.
-    The following is a list of results from a search query.
-    Please respond with a JSON list of result IDs, in order of relevance, excluding irrelevant or low quality results.
-    Implementations are typically better than tests/mocks/documentation, unless the query
-    asked for these specifically.
-    Prefer code elements like structs, classes, functions, etc. to entire files.
-    Including any non-JSON content will cause the application to crash and / or increase latency, which is bad.
-    """
+    system_prompt = textwrap.dedent(
+        """
+        You're acting as the reranking component in a search engine for code.
+        The following is a list of results from a search query.
+        Please respond with a JSON list of result IDs, in order of relevance, excluding irrelevant or low quality results.
+        Implementations are typically better than tests/mocks/documentation, unless the query
+        asked for these specifically.
+        Prefer code elements like structs, classes, functions, etc. to entire files.
+        Include ALL relevant results, there is no limit on the number of results you should return.
+        Including any non-JSON content will cause the application to crash and / or increase latency, which is bad.
+        """
+    )
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "system", "content": f"Query: {query}\nResults: {json_results}"}
