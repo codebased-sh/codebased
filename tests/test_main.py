@@ -1151,7 +1151,8 @@ def test_javascript_top_level_variable_declarations(file_type):
         source
     )
     assert len(objects) == 11
-    file_o, string_o, number_o, boolean_o, null_o, undefined_o, object_o, array_o, hide_pii_o, mask_pii_o, sanitized_o = objects
+    file_o, string_o, number_o, boolean_o, null_o, undefined_o = objects[:6]
+    object_o, array_o, hide_pii_o, mask_pii_o, sanitized_o = objects[6:]
     assert file_o.name == file_name
     assert file_o.kind == 'file'
     assert string_o.name == 'stringData'
