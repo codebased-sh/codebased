@@ -175,10 +175,10 @@ def get_language_for_file_type(file_type: str) -> LanguageImpl | None:
         return get_python_impl()
     elif file_type == 'rs':
         return get_rust_impl()
+    elif file_type == 'cc' or file_type == 'cpp' or file_type == 'cxx' or file_type == 'hpp' or file_type == 'hxx':
+        return get_cpp_impl()
     elif file_type == 'c' or file_type == 'h':
         return get_c_impl()
-    elif file_type == 'cc' or file_type == 'cpp' or file_type == 'cxx' or file_type == 'hpp' or file_type == 'hxx' or file_type == 'h':
-        return get_cpp_impl()
     elif file_type == 'cs':
         return get_c_sharp_impl()
     elif file_type == 'go':
