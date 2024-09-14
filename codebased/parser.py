@@ -175,7 +175,7 @@ def get_language_for_file_type(file_type: str) -> LanguageImpl | None:
         return get_python_impl()
     elif file_type == 'rs':
         return get_rust_impl()
-    elif file_type == 'cc' or file_type == 'cpp' or file_type == 'cxx' or file_type == 'hpp' or file_type == 'hxx':
+    elif file_type == 'cc' or file_type == 'cpp' or file_type == 'cxx' or file_type == 'hpp' or file_type == 'hxx' or file_type == 'h':
         return get_cpp_impl()
     elif file_type == 'c' or file_type == 'h':
         return get_c_impl()
@@ -502,13 +502,13 @@ def get_cpp_impl() -> LanguageImpl:
     CPP_IMPL = LanguageImpl.from_language(
         tree_sitter.Language(tree_sitter_cpp.language()),
         tags="""
-           (struct_specifier . name: (type_identifier) @name body:(_)) @definition.class
+           (struct_specifier . name: (type_identifier) @name body:(_)) @definition.struct
     
             (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
             
             (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
     
-            (field_declaration (function_declarator declarator: (field_identifier) @name)) @definition.function
+            (field_declaration (function_declarator declarator: (field_identifier) @name)) @definition.method
     
             ; removed the local scope from the following line after namespace_identifier
             (function_definition (function_declarator declarator: (qualified_identifier scope: (namespace_identifier) name: (identifier) @name))) @definition.method

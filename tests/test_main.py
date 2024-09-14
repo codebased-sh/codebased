@@ -1175,3 +1175,106 @@ def test_javascript_top_level_variable_declarations(file_type):
     assert mask_pii_o.kind == 'definition.function'
     assert sanitized_o.name == 'sanitizedData'
     assert sanitized_o.kind == 'definition.constant'
+
+
+def test_parse_cxx_header_file():
+    file_name = 'src/shapes.h'
+    source = textwrap.dedent(
+        """
+        #ifndef SHAPES_H
+        #define SHAPES_H
+        
+        #include <iostream>
+        
+        struct Point {
+            double x;
+            double y;
+        };
+        
+        class Shape {
+        public:
+            Shape();
+            virtual ~Shape();
+            virtual double area() = 0;
+        };
+        
+        class Circle : public Shape {
+        public:
+            Circle(double radius);
+            double area() override;
+        private:
+            double radius_;
+        };
+        
+        class Rectangle : public Shape {
+        public:
+            Rectangle(double width, double height);
+            double area() override;
+        private:
+            double width_;
+            double height_;
+        };
+        
+        #endif
+        """
+    ).encode()
+    source_lines = source.splitlines()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 8
+
+    file, point, shape, shape_area, circle, circle_area, rectangle, rectangle_area = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'cpp'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    ifndef_start, ifndef_end = source_lines.index(b'#ifndef SHAPES_H'), source_lines.index(b'#endif')
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.struct'
+    assert point.context_before == [ifndef_start]
+    assert point.context_after == [ifndef_end]
+
+    assert shape.name == 'Shape'
+    assert shape.kind == 'definition.class'
+    assert shape.context_before == [ifndef_start]
+    assert shape.context_after == [ifndef_end]
+
+    shape_start = shape.coordinates[0][0]
+    shape_end = shape.coordinates[1][0]
+
+    assert shape_area.name == 'area'
+    assert shape_area.kind == 'definition.method'
+    assert shape_area.context_before == [ifndef_start, shape_start]
+    assert shape_area.context_after == [ifndef_end, shape_end]
+
+    assert circle.name == 'Circle'
+    assert circle.kind == 'definition.class'
+    assert circle.context_before == [ifndef_start]
+    assert circle.context_after == [ifndef_end]
+
+    circle_start = circle.coordinates[0][0]
+    circle_end = circle.coordinates[1][0]
+
+    assert circle_area.name == 'area'
+    assert circle_area.kind == 'definition.method'
+    assert circle_area.context_before == [ifndef_start, circle_start]
+    assert circle_area.context_after == [ifndef_end, circle_end]
+
+    assert rectangle.name == 'Rectangle'
+    assert rectangle.kind == 'definition.class'
+    assert rectangle.context_before == [ifndef_start]
+    assert rectangle.context_after == [ifndef_end]
+
+    rectangle_start = rectangle.coordinates[0][0]
+    rectangle_end = rectangle.coordinates[1][0]
+
+    assert rectangle_area.name == 'area'
+    assert rectangle_area.kind == 'definition.method'
+    assert rectangle_area.context_before == [ifndef_start, rectangle_start]
+    assert rectangle_area.context_after == [ifndef_end, rectangle_end]
