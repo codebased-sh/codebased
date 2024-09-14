@@ -1278,3 +1278,92 @@ def test_parse_cxx_header_file():
     assert rectangle_area.kind == 'definition.method'
     assert rectangle_area.context_before == [ifndef_start, rectangle_start]
     assert rectangle_area.context_after == [ifndef_end, rectangle_end]
+
+
+def test_parse_c_header_file():
+    # TODO: Properly parse C function declarations.
+    # Note: Definitions are correctly parsed.
+    file_name = 'src/shapes.c'
+    source = textwrap.dedent(
+        """
+        #ifndef SHAPES_H
+        #define SHAPES_H
+
+        #include <stdio.h>
+
+        typedef struct {
+            double x;
+            double y;
+        } Point;
+
+        typedef struct Shape Shape;
+
+        typedef double (*AreaFunc)(const Shape*);
+
+        struct Shape {
+            AreaFunc area;
+        };
+
+        typedef struct {
+            Shape base;
+            double radius;
+        } Circle;
+
+        typedef struct {
+            Shape base;
+            double width;
+            double height;
+        } Rectangle;
+
+        double circle_area(const Shape* shape);
+        double rectangle_area(const Shape* shape);
+
+        Circle* create_circle(double radius);
+        Rectangle* create_rectangle(double width, double height);
+
+        void destroy_shape(Shape* shape);
+
+        #endif
+        """
+    ).encode()
+    source_lines = source.splitlines()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 6
+
+    file, point, shape_fwd, shape, circle, rectangle = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'c'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    ifndef_start, ifndef_end = source_lines.index(b'#ifndef SHAPES_H'), source_lines.index(b'#endif')
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.type'
+    assert point.context_before == [ifndef_start]
+    assert point.context_after == [ifndef_end]
+
+    assert shape_fwd.name == 'Shape'
+    assert shape_fwd.kind == 'definition.type'
+    assert shape_fwd.context_before == [ifndef_start]
+    assert shape_fwd.context_after == [ifndef_end]
+
+    assert shape.name == 'Shape'
+    assert shape.kind == 'definition.struct'
+    assert shape.context_before == [ifndef_start]
+    assert shape.context_after == [ifndef_end]
+
+    assert circle.name == 'Circle'
+    assert circle.kind == 'definition.type'
+    assert circle.context_before == [ifndef_start]
+    assert circle.context_after == [ifndef_end]
+
+    assert rectangle.name == 'Rectangle'
+    assert rectangle.kind == 'definition.type'
+    assert rectangle.context_before == [ifndef_start]
+    assert rectangle.context_after == [ifndef_end]

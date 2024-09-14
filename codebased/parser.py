@@ -481,15 +481,15 @@ def get_c_impl() -> LanguageImpl:
     C_IMPL = LanguageImpl.from_language(
         tree_sitter.Language(tree_sitter_c.language()),
         tags="""
-            (struct_specifier name: (type_identifier) @name body:(_)) @definition.class
-            
-            (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
-            
-            (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
-            
-            (type_definition declarator: (type_identifier) @name) @definition.type
-            
-            (enum_specifier name: (type_identifier) @name) @definition.type
+        (struct_specifier name: (type_identifier) @name body:(_)) @definition.struct
+        
+        (declaration type: (union_specifier name: (type_identifier) @name)) @definition.union
+        
+        (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
+        
+        (type_definition declarator: (type_identifier) @name) @definition.type
+        
+        (enum_specifier name: (type_identifier) @name) @definition.type
         """,
         file_types=['c', 'h'],
         name='c'
