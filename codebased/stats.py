@@ -1,3 +1,5 @@
+from enum import Enum
+
 import dataclasses
 import threading
 import time
@@ -8,6 +10,9 @@ from contextlib import contextmanager
 
 @dataclasses.dataclass
 class Stats:
+    class Key(str, Enum):
+        index_creation_embedding_tokens_consumed = "index.creation.embedding.tokens_consumed"
+
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
     counters: dict[str, float] = dataclasses.field(default_factory=lambda: defaultdict(float))
     ratios: dict[str, tuple[int, int]] = dataclasses.field(default_factory=lambda: defaultdict(lambda: (0, 0)))

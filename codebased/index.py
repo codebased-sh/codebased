@@ -90,7 +90,8 @@ class OpenAIRequestScheduler:
         self.batch_tokens = 0
         self.batch_size_limit = 2048
         self.batch_token_limit = 400_000
-        self.max_concurrent_requests = 8
+        # TODO: Rate limiting.
+        self.max_concurrent_requests = 1
         self.executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_concurrent_requests,
             thread_name_prefix="OpenAIRequestScheduler"
@@ -108,6 +109,7 @@ class OpenAIRequestScheduler:
             STATS.increment("codebased.embeddings.skipped.too_long")
             return results
         if len(self.batch) >= self.batch_size_limit or self.batch_tokens + request_tokens > self.batch_token_limit:
+            STATS.increment(STATS.Key.index_creation_embedding_tokens_consumed, self.batch_tokens)
             self.futures.append(self.executor.submit(self._process_batch, self.batch))
             self.batch = []
             self.batch_tokens = 0
