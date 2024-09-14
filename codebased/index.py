@@ -91,6 +91,9 @@ class OpenAIRequestScheduler:
         self.batch_size_limit = 2048
         self.batch_token_limit = 400_000
         # TODO: Rate limiting.
+        # This essentially runs a single background thread that processes requests.
+        # This will give a modest performance boost by allowing the main thread to do other tasks.
+        # It would be nice to run requests in parallel for short bursts to make medium-sized project indexing faster.
         self.max_concurrent_requests = 1
         self.executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_concurrent_requests,
