@@ -1283,7 +1283,7 @@ def test_parse_cxx_header_file():
 def test_parse_c_header_file():
     # TODO: Properly parse C function declarations.
     # Note: Definitions are correctly parsed.
-    file_name = 'src/shapes.c'
+    file_name = 'src/shapes.h'
     source = textwrap.dedent(
         """
         #ifndef SHAPES_H
@@ -1337,7 +1337,8 @@ def test_parse_c_header_file():
 
     assert file.name == file_name
     assert file.kind == 'file'
-    assert file.language == 'c'
+    # This is not ideal, but it's fine.
+    assert file.language == 'cpp'
     assert file.context_before == []
     assert file.context_after == []
 

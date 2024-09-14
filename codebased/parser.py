@@ -20,6 +20,21 @@ import tree_sitter_typescript
 from codebased.models import Object, Coordinates
 from codebased.utils import decode_text
 
+CPP_TAG_QUERY = """
+(field_declaration (function_declarator declarator: (field_identifier) @name)) @definition.method
+; removed the local scope from the following line after namespace_identifier
+(function_definition (function_declarator declarator: (qualified_identifier scope: (namespace_identifier) name: (identifier) @name))) @definition.method
+(class_specifier . name: (type_identifier) @name) @definition.class
+"""
+
+C_TAG_QUERY = """
+(struct_specifier name: (type_identifier) @name body:(_)) @definition.struct
+(declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
+(function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
+(type_definition declarator: (type_identifier) @name) @definition.type
+(enum_specifier name: (type_identifier) @name) @definition.type
+"""
+
 
 class LanguageImpl:
     def __init__(
@@ -175,9 +190,9 @@ def get_language_for_file_type(file_type: str) -> LanguageImpl | None:
         return get_python_impl()
     elif file_type == 'rs':
         return get_rust_impl()
-    elif file_type == 'cc' or file_type == 'cpp' or file_type == 'cxx' or file_type == 'hpp' or file_type == 'hxx' or file_type == 'h':
+    elif file_type in {'cc', 'cpp', 'cxx', 'hpp', 'hxx', 'h'}:
         return get_cpp_impl()
-    elif file_type == 'c' or file_type == 'h':
+    elif file_type == 'c':
         return get_c_impl()
     elif file_type == 'cs':
         return get_c_sharp_impl()
@@ -480,18 +495,8 @@ def get_rust_impl() -> LanguageImpl:
 def get_c_impl() -> LanguageImpl:
     C_IMPL = LanguageImpl.from_language(
         tree_sitter.Language(tree_sitter_c.language()),
-        tags="""
-        (struct_specifier name: (type_identifier) @name body:(_)) @definition.struct
-        
-        (declaration type: (union_specifier name: (type_identifier) @name)) @definition.union
-        
-        (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
-        
-        (type_definition declarator: (type_identifier) @name) @definition.type
-        
-        (enum_specifier name: (type_identifier) @name) @definition.type
-        """,
-        file_types=['c', 'h'],
+        tags=C_TAG_QUERY,
+        file_types=['c'],
         name='c'
     )
     return C_IMPL
@@ -501,24 +506,7 @@ def get_c_impl() -> LanguageImpl:
 def get_cpp_impl() -> LanguageImpl:
     CPP_IMPL = LanguageImpl.from_language(
         tree_sitter.Language(tree_sitter_cpp.language()),
-        tags="""
-           (struct_specifier . name: (type_identifier) @name body:(_)) @definition.struct
-    
-            (declaration type: (union_specifier name: (type_identifier) @name)) @definition.class
-            
-            (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
-    
-            (field_declaration (function_declarator declarator: (field_identifier) @name)) @definition.method
-    
-            ; removed the local scope from the following line after namespace_identifier
-            (function_definition (function_declarator declarator: (qualified_identifier scope: (namespace_identifier) name: (identifier) @name))) @definition.method
-    
-            (type_definition . declarator: (type_identifier) @name) @definition.type
-    
-            (enum_specifier . name: (type_identifier) @name) @definition.type
-    
-            (class_specifier . name: (type_identifier) @name) @definition.class
-        """,
+        tags='\n'.join([C_TAG_QUERY, CPP_TAG_QUERY]),
         file_types=[
             "cc",
             "cpp",
