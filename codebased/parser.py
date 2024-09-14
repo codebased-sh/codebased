@@ -95,7 +95,11 @@ def get_context(node: tree_sitter.Node) -> tuple[list[int], list[int]]:
         parents.pop()
         while parents:
             parent = parents.pop()
-            if not parent.children_by_field_name('name'):
+            if parent.children_by_field_name('name') or parent.type == 'impl_item' and parent.children_by_field_name(
+                    'type'
+            ):
+                pass
+            else:
                 continue
             parent_start_line = parent.start_point.row
             assert parent_start_line >= start_line
@@ -167,21 +171,22 @@ def parse_objects(path: Path, text: bytes) -> list[Object]:
     chunks = objects
     matches = impl.tags.matches(root_node)
     for _, captures in matches:
-        name_node = captures.pop('name')
-        for definition_kind, definition_node in captures.items():
-            before, after = get_context(definition_node)
-            chunks.append(
-                Object(
-                    path=path,
-                    name=decode_text(name_node.text),
-                    kind=definition_kind,
-                    language=impl.name,
-                    context_before=before,
-                    context_after=after,
-                    byte_range=definition_node.byte_range,
-                    coordinates=get_node_coordinates(definition_node)
+        name_node = captures.pop('name')[0]
+        for definition_kind, definition_nodes in captures.items():
+            for definition_node in definition_nodes:
+                before, after = get_context(definition_node)
+                chunks.append(
+                    Object(
+                        path=path,
+                        name=decode_text(name_node.text),
+                        kind=definition_kind,
+                        language=impl.name,
+                        context_before=before,
+                        context_after=after,
+                        byte_range=definition_node.byte_range,
+                        coordinates=get_node_coordinates(definition_node)
+                    )
                 )
-            )
     return chunks
 
 
@@ -240,7 +245,7 @@ def get_php_impl() -> LanguageImpl:
       name: (name) @name) @definition.function
     
     (method_declaration
-      name: (name) @name) @definition.function
+      name: (name) @name) @definition.method
     """,
         file_types=['php'],
         name='php'
@@ -412,15 +417,11 @@ def get_tsx_impl() -> LanguageImpl:
     return TSX_IMPL
 
 
-# This is fucked but if we don't keep this at the top level it might get garbage collected and the code will crash.
-TSP_LANGUAGE = tree_sitter_python.language()
-
-
 @lru_cache(1)
 def get_python_impl() -> LanguageImpl:
     PYTHON_IMPL = LanguageImpl.from_language(
         # Don't make breaking changes on me dawg.
-        tree_sitter.Language(get_capsule_pointer(TSP_LANGUAGE)),
+        tree_sitter.Language(tree_sitter_python.language()),
         tags="""
             (module (expression_statement (assignment left: (identifier) @name) @definition.constant))
             
@@ -444,7 +445,7 @@ def get_rust_impl() -> LanguageImpl:
         ; ADT definitions
     
     (struct_item
-        name: (type_identifier) @name) @definition.class
+        name: (type_identifier) @name) @definition.struct
     
     (enum_item
         name: (type_identifier) @name) @definition.class
@@ -546,8 +547,8 @@ def get_go_impl() -> LanguageImpl:
             name: (identifier) @name) @definition.function
           (method_declaration
             name: (field_identifier) @name) @definition.method
-            (type_declaration (type_spec
-              name: (type_identifier) @name)) @definition.type
+        (type_declaration (type_spec
+            name: (type_identifier) @name)) @definition.type
         """,
         file_types=['go'],
         name='go'

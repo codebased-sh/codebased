@@ -1368,3 +1368,356 @@ def test_parse_c_header_file():
     assert rectangle.kind == 'definition.type'
     assert rectangle.context_before == [ifndef_start]
     assert rectangle.context_after == [ifndef_end]
+
+
+def test_parse_rust():
+    file_name = 'src/main.rs'
+    source = textwrap.dedent(
+        """
+        #[derive(Debug)]
+        pub struct Point {
+            x: f64,
+            y: f64,
+        }
+        
+        impl Point {
+            pub fn new(x: f64, y: f64) -> Self {
+                Self { x, y }
+            }
+        }
+        
+        fn main() {
+            let p = Point::new(1.0, 2.0);
+            println!("Hello, world!");
+        }
+        """
+    ).encode()
+    source_lines = source.splitlines()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 5
+
+    file, point, impl, function, main = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'rust'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.struct'
+
+    assert impl.name == 'Point'
+    assert impl.kind == 'definition.struct.impl'
+
+    assert function.name == 'new'
+    assert function.kind == 'definition.function'
+    assert function.context_before == [impl.coordinates[0][0]]
+    assert function.context_after == [impl.coordinates[1][0]]
+
+    assert main.name == 'main'
+    assert main.kind == 'definition.function'
+
+
+def test_parse_python():
+    file_name = 'src/main.py'
+    source = textwrap.dedent(
+        """
+        class Point:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+                
+        ORIGIN = Point(0, 0)
+        
+        def main():
+            p = Point(1, 2)
+            print("Hello, world!")
+        """
+    ).encode()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 5
+
+    file, class_, __init__, origin, main = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'python'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert class_.name == 'Point'
+    assert class_.kind == 'definition.class'
+    assert class_.context_before == []
+    assert class_.context_after == []
+
+    assert __init__.name == '__init__'
+    assert __init__.kind == 'definition.function'
+    assert __init__.context_before == [class_.coordinates[0][0]]
+    assert __init__.context_after == []
+
+    assert origin.name == 'ORIGIN'
+    assert origin.kind == 'definition.constant'
+    assert origin.context_before == []
+    assert origin.context_after == []
+
+    assert main.name == 'main'
+    assert main.kind == 'definition.function'
+    assert main.context_before == []
+    assert main.context_after == []
+
+
+def test_parse_c_sharp():
+    # I know literally nothing about this language.
+    # If you're reading this because I made a mistake, please let me know.
+    file_name = 'src/Main.cs'
+    source = textwrap.dedent(
+        """
+        public class Point {
+            public double X { get; set; }
+            public double Y { get; set; }
+        }
+        
+        public static void Main() {
+            var p = new Point { X = 1, Y = 2 };
+            Console.WriteLine("Hello, world!");
+        }
+        """
+    ).encode()
+    source_lines = source.splitlines()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 2
+
+    file, point = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'csharp'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.class'
+    assert point.context_before == []
+
+
+def test_go():
+    file_name = 'src/main.go'
+    source = textwrap.dedent(
+        """
+        package main
+        
+        import "fmt"
+        
+        type Point struct {
+            X float64
+            Y float64
+        }
+        
+        func (*Point) Area() float64 {
+            return 0
+        }
+                
+        func main() {
+            p := Point{X: 1, Y: 2}
+            fmt.Println("Hello, world!")
+        }
+        """
+    ).encode()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    file, point, area, main = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'go'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.type'
+    assert point.context_before == []
+    assert point.context_after == []
+
+    assert area.name == 'Area'
+    assert area.kind == 'definition.method'
+
+    assert main.name == 'main'
+    assert main.kind == 'definition.function'
+    assert main.context_before == []
+    assert main.context_after == []
+
+
+def test_java():
+    file_name = 'src/Main.java'
+    source = textwrap.dedent(
+        """
+        public class Point {
+            public double x;
+            public double y;
+            
+            public double area() {
+                return 0;
+            }
+        }
+        
+        public class Main {
+            public static void main(String[] args) {
+                Point p = new Point();
+                System.out.println("Hello, world!");
+            }
+        }
+        """
+    ).encode()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 5
+    file, point, area, main_class, main = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'java'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.class'
+    assert point.context_before == []
+    assert point.context_after == []
+
+    assert area.name == 'area'
+    assert area.kind == 'definition.method'
+    assert area.context_before == [point.coordinates[0][0]]
+    assert area.context_after == [point.coordinates[1][0]]
+
+    assert main_class.name == 'Main'
+    assert main_class.kind == 'definition.class'
+    assert main_class.context_before == []
+    assert main_class.context_after == []
+
+    assert main.name == 'main'
+    assert main.kind == 'definition.method'
+    assert main.context_before == [main_class.coordinates[0][0]]
+    assert main.context_after == [main_class.coordinates[1][0]]
+
+
+def test_ruby():
+    file_name = 'src/main.rb'
+    source = textwrap.dedent(
+        """
+        class Point
+            attr_accessor :x, :y
+            
+            def area
+                0
+            end
+        end
+        
+        def main
+            p = Point.new
+            puts "Hello, world!"
+        end
+        """
+    ).encode()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 4
+    file, point, area, main = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'ruby'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.class'
+    assert point.context_before == []
+    assert point.context_after == []
+
+    assert area.name == 'area'
+    assert area.kind == 'definition.method'
+    assert area.context_before == [point.coordinates[0][0]]
+    assert area.context_after == [point.coordinates[1][0]]
+
+    assert main.name == 'main'
+    # In Ruby, all "functions" are methods.
+    assert main.kind == 'definition.method'
+    assert main.context_before == []
+    assert main.context_after == []
+
+
+def test_php():
+    file_name = 'src/main.php'
+    source = textwrap.dedent(
+        """
+        <?php
+        
+        class Point {
+            public double $x;
+            public double $y;
+            
+            public function area(): float {
+                return 0;
+            }
+        }
+        
+        function main() {
+            $p = new Point();
+            echo "Hello, world!";
+        }
+        """
+    ).encode()
+    objects = parse_objects(
+        Path(file_name),
+        source
+    )
+    assert len(objects) == 6
+
+    file, point, x, y, area, main = objects
+
+    assert file.name == file_name
+    assert file.kind == 'file'
+    assert file.language == 'php'
+    assert file.context_before == []
+    assert file.context_after == []
+
+    assert point.name == 'Point'
+    assert point.kind == 'definition.class'
+    assert point.context_before == []
+    assert point.context_after == []
+
+    assert x.name == 'x'
+    assert x.kind == 'definition.field'
+    assert x.context_before == [point.coordinates[0][0]]
+    assert x.context_after == [point.coordinates[1][0]]
+
+    assert y.name == 'y'
+    assert y.kind == 'definition.field'
+    assert y.context_before == [point.coordinates[0][0]]
+    assert y.context_after == [point.coordinates[1][0]]
+
+    assert area.name == 'area'
+    assert area.kind == 'definition.method'
+    assert area.context_before == [point.coordinates[0][0]]
+    assert area.context_after == [point.coordinates[1][0]]
+
+    assert main.name == 'main'
+    assert main.kind == 'definition.function'
+    assert main.context_before == []
+    assert main.context_after == []
